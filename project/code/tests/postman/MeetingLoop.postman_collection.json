@@ -1,0 +1,153 @@
+{
+  "info": {
+    "name": "MeetingLoop API",
+    "description": "Postman collection covering core MeetingLoop meeting lifecycle endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create meeting success",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {\n  pm.response.to.have.status(201);\n});\n",
+              "pm.test(\"Response contains meeting data\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson).to.have.property(\"data\");\n  pm.expect(responseJson.data).to.have.property(\"title\");\n  pm.expect(responseJson.data).to.have.property(\"organizer_id\");\n  pm.collectionVariables.set(\"meetingId\", responseJson.data.id);\n});\n"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Quarterly planning\",\n  \"description\": \"Align roadmap planning and team priorities for the next quarter.\",\n  \"start_time\": \"2026-11-16T09:00:00Z\",\n  \"end_time\": \"2026-11-16T10:00:00Z\",\n  \"organizer_id\": 1,\n  \"attendees\": [\n    { \"user_id\": 2, \"required\": true },\n    { \"user_id\": 3, \"required\": true },\n    { \"user_id\": 5, \"required\": false }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/meetings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "meetings"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create meeting validation failure",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {\n  pm.response.to.have.status(422);\n});\n",
+              "pm.test(\"Validation error is returned\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson.error.code).to.eql(\"VALIDATION_ERROR\");\n  pm.expect(responseJson.error.message).to.eql(\"Validation failed\");\n});\n"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"Missing title and organizer details\",\n  \"start_time\": \"2026-11-17T09:00:00Z\",\n  \"end_time\": \"2026-11-17T08:00:00Z\",\n  \"attendees\": []\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/meetings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "meetings"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get meeting success",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});\n",
+              "pm.test(\"Meeting details are returned\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson.data).to.have.property(\"id\");\n  pm.expect(responseJson.data).to.have.property(\"attendees\");\n});\n"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/meetings/{{meetingId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "meetings",
+            "{{meetingId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get meeting 404",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {\n  pm.response.to.have.status(404);\n});\n",
+              "pm.test(\"Not found error is returned\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson.error.code).to.eql(\"MEETING_NOT_FOUND\");\n});\n"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/meetings/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "meetings",
+            "99999"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "meetingId",
+      "value": "1"
+    }
+  ]
+}
