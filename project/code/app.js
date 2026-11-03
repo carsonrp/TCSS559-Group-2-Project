@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import meetingRouter from './src/modules/meetings/index.js';
+import availabilityRouter from './src/modules/meetings/availability.routes.js';
 import { errorHandler, notFoundHandler } from './src/common/errors/index.js';
 
 const app = express();
@@ -24,6 +25,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/meetings', meetingRouter);
+app.use('/api', availabilityRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
