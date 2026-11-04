@@ -1,0 +1,43 @@
+.App {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.App-header {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.App-header h1 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--text);
+}
+
+.App-header p {
+  margin: 0;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.theme-toggle:hover { background: var(--surface-hover); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+.theme-toggle svg { width: 16px; height: 16px; }

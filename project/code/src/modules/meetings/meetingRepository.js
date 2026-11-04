@@ -133,7 +133,35 @@ export async function findMeetingById(id) {
   };
 }
 
+export async function findMeetingsInRange({ start = null, end = null } = {}) {
+  const result = await pool.query(
+    `
+      SELECT
+        m.id,
+        m.title,
+        m.description,
+        m.start_time,
+        m.end_time,
+        m.organizer_id,
+        m.status,
+        o.name AS organizer_name,
+        COUNT(ma.user_id)::int AS attendee_count
+      FROM meetings m
+      INNER JOIN users o ON o.id = m.organizer_id
+      LEFT JOIN meeting_attendees ma ON ma.meeting_id = m.id
+      WHERE ($1::timestamptz IS NULL OR m.end_time > $1::timestamptz)
+        AND ($2::timestamptz IS NULL OR m.start_time < $2::timestamptz)
+      GROUP BY m.id, o.name
+      ORDER BY m.start_time ASC
+    `,
+    [start, end]
+  );
+
+  return result.rows;
+}
+
 export default {
   createMeetingRecord,
   findMeetingById,
+  findMeetingsInRange,
 };

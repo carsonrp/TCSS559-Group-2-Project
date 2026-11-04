@@ -1,0 +1,32 @@
+@startuml 04-toggle-theme
+!include _style.iuml
+title Activity 4 — Switch Between Dark and Light Mode
+
+|#F7F5FB|User|
+start
+:Click the theme toggle\n("Light mode" / "Dark mode");
+
+|#EEF3FB|Frontend (React)|
+:toggleTheme() flips state\ndark ↔ light;
+fork
+  :useEffect sets\n<html data-color-scheme="…">;
+  fork
+    :App color tokens in index.css\nre-resolve (background, surface,\ntext and accent variables);
+  fork again
+    :FullCalendar monarch palette\nswitches its dark / light variables;
+  end fork
+fork again
+  :Try localStorage.setItem\n("meetingloop-theme", theme);
+  if (Storage available?) then (yes)
+    :Preference saved for next visit;
+  else (no — e.g. private mode)
+    :Ignore; theme applies\nfor this visit only;
+  endif
+fork again
+  :Re-render toggle button\n(sun ↔ moon icon and label);
+end fork
+
+|User|
+:Sees the whole app in the new theme;
+stop
+@enduml

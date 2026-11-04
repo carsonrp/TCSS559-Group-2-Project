@@ -1,0 +1,54 @@
+@startuml 02-view-meeting-details
+!include _style.iuml
+title Activity 2 — View Meeting Details
+
+|#F7F5FB|User|
+start
+:Click a meeting on the calendar;
+
+|#EEF3FB|Frontend (React + FullCalendar)|
+:eventClick handler\n(preventDefault, read event.id);
+:setSelectedMeetingId(id);
+:Open MeetingDetails side panel\nshowing "Loading…";
+:Send GET /api/meetings/:id;
+
+|#F2F8F1|Backend API (Express)|
+:Validate :id is a positive integer;
+if (Valid id?) then (no)
+  :Respond 422 VALIDATION_ERROR;
+else (yes)
+  :getMeetingByIdController\n→ meetingService.getMeetingById();
+  |#FBF4EC|PostgreSQL|
+  :SELECT meeting JOIN users\n(organizer details) WHERE id = $1;
+  |Backend API (Express)|
+  if (Meeting found?) then (no)
+    :Throw AppError 404\nMEETING_NOT_FOUND;
+    :errorHandler formats\nthe error response;
+  else (yes)
+    |PostgreSQL|
+    :SELECT meeting_attendees JOIN users\nWHERE meeting_id = $1 ORDER BY name;
+    |Backend API (Express)|
+    :Assemble MeetingDetail\n(organizer object + attendees list);
+    :Respond 200 { data: MeetingDetail };
+  endif
+endif
+
+|Frontend (React + FullCalendar)|
+if (Response OK?) then (yes)
+  :Render status pill, title,\ndate and time range;
+  if (Has description?) then (yes)
+    :Show description;
+  endif
+  :List organizer and attendees\n(mark non-required as "Optional");
+else (no)
+  :Show error message in panel;
+endif
+
+|User|
+:Read the details;
+:Close panel\n(× button, click outside, or Esc);
+
+|Frontend (React + FullCalendar)|
+:setSelectedMeetingId(null)\n→ panel unmounts;
+stop
+@enduml
