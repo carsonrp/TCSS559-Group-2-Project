@@ -1,4 +1,4 @@
-import { createMeeting, getMeetingById } from './meetingService.js';
+import { createMeeting, getMeetingById, listMeetings } from './meetingService.js';
 
 export async function createMeetingController(req, res, next) {
   try {
@@ -18,7 +18,17 @@ export async function getMeetingByIdController(req, res, next) {
   }
 }
 
+export async function listMeetingsController(req, res, next) {
+  try {
+    const meetings = await listMeetings({ start: req.query.start, end: req.query.end });
+    res.status(200).json({ data: meetings });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export default {
+  listMeetings: listMeetingsController,
   createMeeting: createMeetingController,
   getMeetingById: getMeetingByIdController,
 };

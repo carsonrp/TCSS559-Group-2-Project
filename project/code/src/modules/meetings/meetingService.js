@@ -1,5 +1,5 @@
 import AppError from '../../common/errors/AppError.js';
-import { createMeetingRecord, findMeetingById } from './meetingRepository.js';
+import { createMeetingRecord, findMeetingById, findMeetingsInRange } from './meetingRepository.js';
 
 export function normalizeAttendeeList(rawAttendees) {
   if (!Array.isArray(rawAttendees) || rawAttendees.length === 0) {
@@ -120,8 +120,16 @@ export async function getMeetingById(id) {
   return meeting;
 }
 
+export async function listMeetings({ start, end } = {}) {
+  const startTime = start ? normalizeTimestamp(start, 'start') : null;
+  const endTime = end ? normalizeTimestamp(end, 'end') : null;
+
+  return findMeetingsInRange({ start: startTime, end: endTime });
+}
+
 export default {
   createMeeting,
   getMeetingById,
+  listMeetings,
   normalizeAttendeeList,
 };

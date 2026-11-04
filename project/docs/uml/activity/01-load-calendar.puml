@@ -1,0 +1,54 @@
+@startuml 01-load-calendar
+!include _style.iuml
+title Activity 1 — Load & Navigate the Calendar
+
+|#F7F5FB|User|
+start
+:Open MeetingLoop in the browser;
+
+|#EEF3FB|Frontend (React + FullCalendar)|
+:Inline script in index.html reads\nlocalStorage "meetingloop-theme";
+if (Saved theme is "light"?) then (yes)
+  :Set <html data-color-scheme="light">;
+else (no / storage unavailable)
+  :Set <html data-color-scheme="dark">\n(default);
+endif
+:Mount <App/>, header and theme toggle;
+:Render <FullCalendar/> in week view\n(timeGridWeek, 7am–9pm, business hours);
+
+repeat
+  :FullCalendar computes the visible\ndate range [start, end);
+  :Call loadEvents(start, end)\n→ fetchMeetings();
+  :Send GET /api/meetings?start=ISO&end=ISO;
+
+  |#F2F8F1|Backend API (Express)|
+  :Run query validators\n(start, end must be ISO 8601);
+  if (Query valid?) then (no)
+    :handleValidationErrors\n→ AppError 422 VALIDATION_ERROR;
+    :errorHandler returns\n{ error: { code, message, details } };
+  else (yes)
+    :listMeetingsController\n→ meetingService.listMeetings();
+    :Normalize start / end\nto ISO timestamps;
+    |#FBF4EC|PostgreSQL|
+    :SELECT meetings JOIN users (organizer)\nLEFT JOIN meeting_attendees\nWHERE end_time > start AND start_time < end\nGROUP BY meeting ORDER BY start_time;
+    :Return rows with organizer_name\nand attendee_count;
+    |Backend API (Express)|
+    :Respond 200 { data: MeetingSummary[] };
+  endif
+
+  |Frontend (React + FullCalendar)|
+  if (Response OK?) then (yes)
+    :Clear error banner;
+    :Map each meeting to an EventInput\n(color by status, white contrast text);
+    :Render events in the current view;
+  else (no / network failure)
+    :Show "Couldn't load meetings…" banner;
+    :Return empty event list;
+  endif
+
+  |User|
+  :Browse the calendar;
+repeat while (Prev / Next / Today, or switch view\n(Month · Week · Day · List)?) is (yes)
+->no;
+stop
+@enduml

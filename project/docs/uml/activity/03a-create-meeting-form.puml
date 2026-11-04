@@ -1,0 +1,72 @@
+@startuml 03a-create-meeting-form
+!include _style.iuml
+title Activity 3a — Create a Meeting (User & Frontend)
+
+|#F7F5FB|User|
+start
+if (How is creation started?) then (drag across time slots)
+  |#EEF3FB|Frontend (React + FullCalendar)|
+  :select handler receives start / end;
+  if (All-day selection\n(month view)?) then (yes)
+    :Default to 9:00–10:00\non the first selected day;
+  else (no)
+    :Use the selected time range;
+  endif
+  :Clear calendar selection;
+else (click "+ New meeting")
+  |Frontend (React + FullCalendar)|
+  :Default to the next full hour,\nlasting 1 hour;
+endif
+
+:Open CreateMeetingDialog\nwith start / end pre-filled;
+
+fork
+  :Send GET /api/users;
+  |#F2F8F1|Backend API (Express)|
+  :listUsersController\n→ findAllUsers()\n(SELECT … FROM users ORDER BY name);
+  :Respond 200 { data: Person[] };
+  |Frontend (React + FullCalendar)|
+  :Populate organizer dropdown\nand attendee chips;
+fork again
+  |User|
+  :Enter title and description,\nadjust start / end;
+end fork
+
+|User|
+repeat
+  :Choose organizer;
+  :Click attendee chips to cycle\nrequired → optional → off;
+  :Click "Create meeting";
+
+  |Frontend (React + FullCalendar)|
+  :Client-side validation:\ntitle, organizer, ≥1 attendee, end > start;
+  if (Form valid?) then (no)
+    :Show inline error message;
+  else (yes)
+    :Disable button ("Saving…");
+    :Send POST /api/meetings\n(times converted to ISO / UTC);
+    |Backend API (Express)|
+    :Validate, apply business rules\nand persist in a transaction\n(see Activity 3b);
+    |Frontend (React + FullCalendar)|
+    if (Response 201?) then (no — 422 / 500 / network)
+      :Show server error message;
+      :Re-enable "Create meeting";
+    else (yes)
+    endif
+  endif
+  |User|
+repeat while (Meeting saved?) is (no — correct and retry) not (yes)
+
+|Frontend (React + FullCalendar)|
+:Close dialog;
+:calendarApi.refetchEvents()\n(see Activity 1);
+:Open details panel for\nthe new meeting (see Activity 2);
+|User|
+stop
+
+floating note right
+  At any point the user can **Cancel**
+  (button, Esc, or click outside):
+  the dialog closes and nothing is saved.
+end note
+@enduml
