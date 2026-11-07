@@ -1,7 +1,11 @@
 import { Router } from 'express';
-import { body, param } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import handleValidationErrors from '../../common/middleware/validation.js';
-import { createMeetingController, getMeetingByIdController } from './meetingController.js';
+import {
+  createMeetingController,
+  getMeetingByIdController,
+  listMeetingsController,
+} from './meetingController.js';
 
 const meetingRouter = Router();
 
@@ -51,6 +55,16 @@ meetingRouter.post(
   ],
   handleValidationErrors,
   createMeetingController
+);
+
+meetingRouter.get(
+  '/',
+  [
+    query('start').optional().isISO8601().withMessage('start must be a valid ISO8601 date'),
+    query('end').optional().isISO8601().withMessage('end must be a valid ISO8601 date'),
+  ],
+  handleValidationErrors,
+  listMeetingsController
 );
 
 meetingRouter.get(

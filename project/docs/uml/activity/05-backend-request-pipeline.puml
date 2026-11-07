@@ -1,0 +1,54 @@
+@startuml 05-backend-request-pipeline
+!include _style.iuml
+title Activity 5 — Backend Request Pipeline (Express)
+
+|#EEF3FB|Client (React app)|
+start
+:Send HTTP request;
+
+|#F2F8F1|Express middleware|
+:cors (reflect origin, allow credentials);
+:helmet (security headers);
+:express.json (body ≤ 1 MB);
+if (Body parses?) then (no)
+  :Parse error\n(malformed JSON / too large);
+elseif (Path matches a route?) then (no)
+  :notFoundHandler\n→ AppError 404 NOT_FOUND;
+elseif (GET /health?) then (yes)
+  :Build 200\n{ status: "ok", service, uptime };
+else (/api/meetings or /api/users)
+  |#F7F2FB|Module router|
+  :Dispatch to meetingRouter / userRouter;
+  :Run express-validator chain\n→ handleValidationErrors;
+  if (Validation errors?) then (yes)
+    :AppError 422 VALIDATION_ERROR\nwith per-field details;
+  else (no)
+    :Controller (try / catch);
+    :Service — business rules;
+    :Repository — parameterized SQL;
+    |#FBF4EC|PostgreSQL (pg Pool)|
+    :Execute query / transaction;
+    |Module router|
+    if (Error thrown?) then (yes)
+      :next(error);
+    else (no)
+      :Build 200 / 201 { data };
+    endif
+  endif
+endif
+
+|Express middleware|
+if (Error raised?) then (yes)
+  :errorHandler:\nstatus = error.statusCode or 500,\ncode = error.code or INTERNAL_SERVER_ERROR\n→ { error: { code, message, details } };
+else (no)
+endif
+:Send HTTP response;
+
+|Client (React app)|
+if (2xx response?) then (yes)
+  :Use response data;
+else (no)
+  :ApiError surfaced in the UI\n(banner, panel, or form message);
+endif
+stop
+@enduml

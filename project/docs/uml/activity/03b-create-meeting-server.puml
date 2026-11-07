@@ -1,0 +1,64 @@
+@startuml 03b-create-meeting-server
+!include _style.iuml
+title Activity 3b — Create a Meeting (Backend & Database)
+
+|#EEF3FB|Frontend|
+start
+:POST /api/meetings\n{ title, description, start_time, end_time,\n  organizer_id, attendees[] };
+
+|#F2F8F1|Backend API (Express)|
+:express-validator body rules:\ntitle required (≤200), description ≤2000,\nISO 8601 start / end, organizer_id > 0,\nattendees[] non-empty with user_id;
+if (Request valid?) then (no)
+  :AppError 422 VALIDATION_ERROR\nwith per-field details;
+else (yes)
+  :createMeetingController\n→ meetingService.createMeeting();
+  :Trim title, check organizer_id,\nnormalize start / end to ISO;
+  if (end_time > start_time?) then (no)
+    :AppError 422\n"end time must be after start time";
+  else (yes)
+    :normalizeAttendeeList():\nvalid user_ids, reject duplicates,\ncoerce "required" to boolean;
+    if (Attendees valid?) then (no)
+      :AppError 422\n(invalid or duplicate user_id);
+    else (yes)
+      |#FBF4EC|PostgreSQL|
+      :pool.connect() → BEGIN;
+      :INSERT INTO meetings\n(status = 'scheduled') RETURNING *;
+      :INSERT INTO meeting_attendees\n(one batched multi-row statement);
+      if (Inserts succeed?) then (yes)
+        :COMMIT;
+      else (no — e.g. unknown user / organizer FK)
+        :ROLLBACK;
+      endif
+      :Release pooled client (finally);
+      |Backend API (Express)|
+      if (Committed?) then (no)
+        :Rethrow database error\n(no statusCode → 500);
+      else (yes)
+        |PostgreSQL|
+        :findMeetingById(new id)\n(meeting + organizer + attendees);
+        |Backend API (Express)|
+        if (Meeting read back?) then (no)
+          :AppError 500\nMEETING_CREATE_FAILED;
+        else (yes)
+          :Build 201 { data: MeetingDetail };
+        endif
+      endif
+    endif
+  endif
+endif
+
+|Backend API (Express)|
+if (Error raised?) then (yes)
+  :errorHandler →\n{ error: { code, message, details } }\nwith 422 or 500 status;
+else (no)
+endif
+:Send HTTP response;
+
+|Frontend|
+if (201 Created?) then (yes)
+  :Close dialog and refresh calendar\n(Activity 3a);
+else (no)
+  :Show error in the dialog\n(Activity 3a);
+endif
+stop
+@enduml
