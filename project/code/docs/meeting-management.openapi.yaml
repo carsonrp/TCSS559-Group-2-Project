@@ -9,7 +9,23 @@ tags:
   - name: Meetings
   - name: Attendees
   - name: Availability
+  - name: Health
 paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Check service health
+      responses:
+        '200':
+          description: Service status and process uptime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: ok
+                service: MeetingLoop
+                uptime: 123.45
   /api/meetings:
     post:
       tags: [Meetings]
@@ -370,6 +386,36 @@ components:
         type: integer
         minimum: 1
   schemas:
+    HealthStatus:
+      type: object
+      required: [status, service, uptime]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: MeetingLoop
+        uptime:
+          type: number
+          description: Process uptime in seconds.
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              oneOf:
+                - type: object
+                  nullable: true
+                - type: array
     CreateMeeting:
       type: object
       required: [title, start_time, end_time, organizer_id, attendees]
@@ -379,6 +425,7 @@ components:
           maxLength: 200
         description:
           type: string
+          nullable: true
         start_time:
           type: string
           format: date-time
@@ -395,17 +442,19 @@ components:
         attendees:
           type: array
           minItems: 1
-          uniqueItems: true
           items:
-            type: object
-            required: [user_id]
-            properties:
-              user_id:
-                type: integer
+            oneOf:
+              - type: integer
                 minimum: 1
-              required:
-                type: boolean
-                default: true
+              - type: object
+                required: [user_id]
+                properties:
+                  user_id:
+                    type: integer
+                    minimum: 1
+                  required:
+                    type: boolean
+                    default: true
     UpdateMeeting:
       type: object
       minProperties: 1
@@ -416,6 +465,7 @@ components:
           maxLength: 200
         description:
           type: string
+          nullable: true
         start_time:
           type: string
           format: date-time
@@ -451,6 +501,8 @@ components:
       description: Request validation failed.
       content:
         application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
           example:
             error:
               code: VALIDATION_ERROR
@@ -462,6 +514,8 @@ components:
       description: Requested meeting, user, attendee, or availability slot was not found.
       content:
         application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
           example:
             error:
               code: MEETING_NOT_FOUND
@@ -472,6 +526,8 @@ components:
       description: The requested attendee schedule overlaps an existing meeting.
       content:
         application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
           example:
             error:
               code: SCHEDULING_CONFLICT
