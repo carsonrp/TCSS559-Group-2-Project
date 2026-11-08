@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/validation.test.js tests/action-items-dependencies.test.js && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand tests/meeting-management.jest.test.js",
+    "test:jest": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand"
   },
   "keywords": [
     "meetingloop",
@@ -26,6 +27,7 @@
     "pg": "^8.12.0"
   },
   "devDependencies": {
+    "jest": "^30.5.2",
     "nodemon": "^3.1.14"
   }
 }

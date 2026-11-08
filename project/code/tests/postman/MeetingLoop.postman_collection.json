@@ -1,153 +1,145 @@
 {
   "info": {
-    "name": "MeetingLoop API",
-    "description": "Postman collection covering core MeetingLoop meeting lifecycle endpoints",
+    "name": "MeetingLoop Meeting Management API",
+    "description": "Successful, validation, not-found, conflict, attendee, and availability examples for the Meeting Management module.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "Create meeting success",
-      "event": [
+      "name": "Meetings",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 201\", function () {\n  pm.response.to.have.status(201);\n});\n",
-              "pm.test(\"Response contains meeting data\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson).to.have.property(\"data\");\n  pm.expect(responseJson.data).to.have.property(\"title\");\n  pm.expect(responseJson.data).to.have.property(\"organizer_id\");\n  pm.collectionVariables.set(\"meetingId\", responseJson.data.id);\n});\n"
-            ],
-            "type": "text/javascript"
+          "name": "Create meeting - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Created', function () { pm.response.to.have.status(201); });", "const body = pm.response.json();", "pm.collectionVariables.set('meetingId', body.data.id);", "pm.test('Includes meeting attendees', function () { pm.expect(body.data.attendees).to.be.an('array'); });"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Postman planning meeting\",\n  \"description\": \"Created by the MeetingLoop collection.\",\n  \"start_time\": \"2026-11-16T09:00:00Z\",\n  \"end_time\": \"2026-11-16T10:00:00Z\",\n  \"organizer_id\": 1,\n  \"attendees\": [{ \"user_id\": 2, \"required\": true }]\n}" },
+            "url": "{{baseUrl}}/api/meetings"
           }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"title\": \"Quarterly planning\",\n  \"description\": \"Align roadmap planning and team priorities for the next quarter.\",\n  \"start_time\": \"2026-11-16T09:00:00Z\",\n  \"end_time\": \"2026-11-16T10:00:00Z\",\n  \"organizer_id\": 1,\n  \"attendees\": [\n    { \"user_id\": 2, \"required\": true },\n    { \"user_id\": 3, \"required\": true },\n    { \"user_id\": 5, \"required\": false }\n  ]\n}"
         },
-        "url": {
-          "raw": "{{baseUrl}}/api/meetings",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "meetings"
-          ]
-        }
-      }
-    },
-    {
-      "name": "Create meeting validation failure",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 422\", function () {\n  pm.response.to.have.status(422);\n});\n",
-              "pm.test(\"Validation error is returned\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson.error.code).to.eql(\"VALIDATION_ERROR\");\n  pm.expect(responseJson.error.message).to.eql(\"Validation failed\");\n});\n"
-            ],
-            "type": "text/javascript"
+          "name": "Create meeting - validation failure",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Validation failure is 422', function () { pm.response.to.have.status(422); });", "pm.test('Validation error body is returned', function () { pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'); });"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"\",\n  \"start_time\": \"2026-11-17T10:00:00Z\",\n  \"end_time\": \"2026-11-17T09:00:00Z\",\n  \"organizer_id\": 1,\n  \"attendees\": []\n}" },
+            "url": "{{baseUrl}}/api/meetings"
           }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"description\": \"Missing title and organizer details\",\n  \"start_time\": \"2026-11-17T09:00:00Z\",\n  \"end_time\": \"2026-11-17T08:00:00Z\",\n  \"attendees\": []\n}"
         },
-        "url": {
-          "raw": "{{baseUrl}}/api/meetings",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "meetings"
-          ]
+        {
+          "name": "List meetings - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Page returned', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().pagination).to.have.property('total'); });"] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings?page=1&limit=20" }
+        },
+        {
+          "name": "Get meeting - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Meeting returned', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().data).to.have.property('organizer'); });"] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/{{meetingId}}" }
+        },
+        {
+          "name": "Update meeting - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Meeting updated', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().data.title).to.eql('Postman planning meeting - revised'); });"] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Postman planning meeting - revised\",\n  \"start_time\": \"2026-11-16T10:00:00Z\",\n  \"end_time\": \"2026-11-16T11:00:00Z\"\n}" },
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}"
+          }
+        },
+        {
+          "name": "Get meeting - not found",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Missing meeting is 404', function () { pm.response.to.have.status(404); });"] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/999999" }
+        },
+        {
+          "name": "Validate schedule - conflict",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Conflict check identifies overlap', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.conflict).to.eql(true); pm.expect(body.conflictingMeetings).to.be.an('array').that.is.not.empty; });"] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/validate?start=2026-11-02T09:30:00Z&end=2026-11-02T10:30:00Z&attendees=1,2" }
         }
-      }
+      ]
     },
     {
-      "name": "Get meeting success",
-      "event": [
+      "name": "Attendees",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});\n",
-              "pm.test(\"Meeting details are returned\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson.data).to.have.property(\"id\");\n  pm.expect(responseJson.data).to.have.property(\"attendees\");\n});\n"
-            ],
-            "type": "text/javascript"
+          "name": "Add attendee - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Attendee added', function () { pm.response.to.have.status(201); pm.expect(pm.response.json().data.user_id).to.eql(7); });"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"user_id\": 7,\n  \"required\": true\n}" },
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}/attendees"
           }
+        },
+        {
+          "name": "Get attendees - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Full attendee information returned', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().data[0]).to.have.property('email'); });"] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/{{meetingId}}/attendees" }
+        },
+        {
+          "name": "Remove attendee - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Attendee removed', function () { pm.response.to.have.status(204); });"] } }],
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/meetings/{{meetingId}}/attendees/7" }
         }
-      ],
-      "request": {
-        "method": "GET",
-        "url": {
-          "raw": "{{baseUrl}}/api/meetings/{{meetingId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "meetings",
-            "{{meetingId}}"
-          ]
-        }
-      }
+      ]
     },
     {
-      "name": "Get meeting 404",
-      "event": [
+      "name": "Availability",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 404\", function () {\n  pm.response.to.have.status(404);\n});\n",
-              "pm.test(\"Not found error is returned\", function () {\n  const responseJson = pm.response.json();\n  pm.expect(responseJson.error.code).to.eql(\"MEETING_NOT_FOUND\");\n});\n"
-            ],
-            "type": "text/javascript"
+          "name": "Create availability - user 1",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Availability created', function () { pm.response.to.have.status(201); });", "pm.collectionVariables.set('availabilityId1', pm.response.json().data.id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"available_start\": \"2026-11-01T09:00:00Z\",\n  \"available_end\": \"2026-11-01T17:00:00Z\"\n}" },
+            "url": "{{baseUrl}}/api/users/1/availability"
           }
+        },
+        {
+          "name": "Create availability - user 2",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Availability created', function () { pm.response.to.have.status(201); });", "pm.collectionVariables.set('availabilityId2', pm.response.json().data.id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"available_start\": \"2026-11-01T15:00:00Z\",\n  \"available_end\": \"2026-11-01T18:00:00Z\"\n}" },
+            "url": "{{baseUrl}}/api/users/2/availability"
+          }
+        },
+        {
+          "name": "Get user availability - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Availability list returned', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().data).to.be.an('array'); });"] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/1/availability" }
+        },
+        {
+          "name": "Find common availability - success",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Actual common window returned', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.availableSlots).to.include.deep({ start: '2026-11-01T15:00:00.000Z', end: '2026-11-01T17:00:00.000Z' }); });"] } }],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/availability/common?attendees=1,2" }
+        },
+        {
+          "name": "Delete availability - user 1 slot",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Availability deleted', function () { pm.response.to.have.status(204); });"] } }],
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/availability/{{availabilityId1}}" }
+        },
+        {
+          "name": "Delete availability - user 2 slot",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Availability deleted', function () { pm.response.to.have.status(204); });"] } }],
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/availability/{{availabilityId2}}" }
         }
-      ],
-      "request": {
-        "method": "GET",
-        "url": {
-          "raw": "{{baseUrl}}/api/meetings/99999",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "meetings",
-            "99999"
-          ]
-        }
-      }
+      ]
+    },
+    {
+      "name": "Delete created meeting",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Meeting deleted', function () { pm.response.to.have.status(204); });"] } }],
+      "request": { "method": "DELETE", "url": "{{baseUrl}}/api/meetings/{{meetingId}}" }
     }
   ],
   "variable": [
-    {
-      "key": "baseUrl",
-      "value": "http://localhost:3000"
-    },
-    {
-      "key": "meetingId",
-      "value": "1"
-    }
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "meetingId", "value": "1" },
+    { "key": "availabilityId1", "value": "1" },
+    { "key": "availabilityId2", "value": "2" }
   ]
 }
