@@ -25,9 +25,14 @@ project/code/
 │   ├── Dockerfile
 │   └── render.yaml
 ├── tests/
+│   ├── meeting-management.jest.test.js
 │   ├── validation.test.js
 │   └── postman/
 │       └── MeetingLoop.postman_collection.json
+├── docs/
+│   └── meeting-management.openapi.yaml
+├── migrations/
+│   └── 001_user_availability.sql
 ├── src/
 │   ├── common/
 │   │   ├── config/
@@ -42,7 +47,17 @@ project/code/
 │   │       └── validation.js
 │   └── modules/
 │       ├── meetings/
+│       │   ├── attendee.routes.js
+│       │   ├── attendeeController.js
+│       │   ├── attendeeRepository.js
+│       │   ├── attendeeService.js
+│       │   ├── availability.routes.js
+│       │   ├── availabilityController.js
+│       │   ├── availabilityRepository.js
+│       │   ├── availabilityService.js
+│       │   ├── conflictService.js
 │       │   ├── index.js
+│       │   ├── meeting.routes.js
 │       │   ├── meetingController.js
 │       │   ├── meetingRepository.js
 │       │   ├── meetingService.js
@@ -88,7 +103,13 @@ psql -h localhost -U postgres -d meetingloop -f schema.sql
 psql -h localhost -U postgres -d meetingloop -f seed.sql
 ```
 
-4. Verify the tables exist:
+4. Create the availability table:
+
+```bash
+psql -h localhost -U postgres -d meetingloop -f migrations/001_user_availability.sql
+```
+
+5. Verify the tables exist:
 
 ```sql
 \dt
@@ -221,6 +242,8 @@ Not found response:
   }
 }
 ```
+
+The complete Meeting Management endpoint list and examples are documented in [docs/meeting-management.openapi.yaml](./docs/meeting-management.openapi.yaml). It covers meeting CRUD, attendee operations, user availability, conflict validation, and common availability.
 
 ## Testing
 

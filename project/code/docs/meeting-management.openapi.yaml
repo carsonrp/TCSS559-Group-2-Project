@@ -1,0 +1,538 @@
+openapi: 3.0.3
+info:
+  title: MeetingLoop Meeting Management API
+  version: 1.0.0
+  description: Meeting lifecycle, attendee management, scheduling conflicts, and availability.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Meetings
+  - name: Attendees
+  - name: Availability
+  - name: Health
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Check service health
+      responses:
+        '200':
+          description: Service status and process uptime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: ok
+                service: MeetingLoop
+                uptime: 123.45
+  /api/meetings:
+    post:
+      tags: [Meetings]
+      summary: Create a meeting and its attendees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMeeting'
+            example:
+              title: Sprint planning
+              description: Plan the next sprint.
+              start_time: '2026-11-16T09:00:00Z'
+              end_time: '2026-11-16T10:00:00Z'
+              organizer_id: 1
+              attendees:
+                - user_id: 2
+                  required: true
+                - user_id: 3
+                  required: false
+      responses:
+        '201':
+          description: Meeting created.
+          content:
+            application/json:
+              example:
+                data:
+                  id: 21
+                  title: Sprint planning
+                  organizer_id: 1
+                  attendees:
+                    - user_id: 2
+                      name: Daniel Lee
+                      required: true
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      tags: [Meetings]
+      summary: List meetings with pagination
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Page of meetings.
+          content:
+            application/json:
+              example:
+                data:
+                  - id: 21
+                    title: Sprint planning
+                    start_time: '2026-11-16T09:00:00Z'
+                    end_time: '2026-11-16T10:00:00Z'
+                    organizer_id: 1
+                    status: scheduled
+                pagination:
+                  page: 1
+                  limit: 20
+                  total: 1
+                  totalPages: 1
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/validate:
+    get:
+      tags: [Meetings]
+      summary: Check whether attendees have a scheduling conflict
+      parameters:
+        - in: query
+          name: start
+          required: true
+          schema:
+            type: string
+            format: date-time
+          example: '2026-11-02T09:30:00Z'
+        - in: query
+          name: end
+          required: true
+          schema:
+            type: string
+            format: date-time
+          example: '2026-11-02T10:30:00Z'
+        - in: query
+          name: attendees
+          required: true
+          description: Comma-separated user ids.
+          schema:
+            type: string
+          example: '1,2,3'
+      responses:
+        '200':
+          description: Conflict check result.
+          content:
+            application/json:
+              example:
+                conflict: true
+                conflictingMeetings:
+                  - meetingId: 3
+                    title: Sprint Planning
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/availability/common:
+    get:
+      tags: [Availability]
+      summary: Find common availability windows for all attendees
+      parameters:
+        - in: query
+          name: attendees
+          required: true
+          description: Comma-separated user ids.
+          schema:
+            type: string
+          example: '1,2,3'
+      responses:
+        '200':
+          description: Intersections shared by every requested user.
+          content:
+            application/json:
+              example:
+                availableSlots:
+                  - start: '2026-11-01T15:00:00.000Z'
+                    end: '2026-11-01T16:00:00.000Z'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MeetingId'
+    get:
+      tags: [Meetings]
+      summary: Get a meeting with organizer and attendee details
+      responses:
+        '200':
+          description: Meeting details.
+          content:
+            application/json:
+              example:
+                data:
+                  id: 21
+                  title: Sprint planning
+                  organizer:
+                    id: 1
+                    name: Alice Martinez
+                    email: alice@example.com
+                  attendees:
+                    - user_id: 2
+                      name: Daniel Lee
+                      email: daniel@example.com
+                      required: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    put:
+      tags: [Meetings]
+      summary: Update meeting details
+      description: Send one or more of title, description, start_time, end_time, or status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeeting'
+            example:
+              title: Sprint planning - revised
+              start_time: '2026-11-16T10:00:00Z'
+              end_time: '2026-11-16T11:00:00Z'
+      responses:
+        '200':
+          description: Meeting updated.
+          content:
+            application/json:
+              example:
+                data:
+                  id: 21
+                  title: Sprint planning - revised
+                  status: scheduled
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Meetings]
+      summary: Delete a meeting and its attendee links
+      responses:
+        '204':
+          description: Meeting deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/{id}/attendees:
+    parameters:
+      - $ref: '#/components/parameters/MeetingId'
+    post:
+      tags: [Attendees]
+      summary: Add an attendee to a meeting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddAttendee'
+            example:
+              user_id: 7
+              required: true
+      responses:
+        '201':
+          description: Attendee added.
+          content:
+            application/json:
+              example:
+                data:
+                  user_id: 7
+                  name: Nina Gomez
+                  required: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    get:
+      tags: [Attendees]
+      summary: List full attendee information for a meeting
+      responses:
+        '200':
+          description: Attendee list.
+          content:
+            application/json:
+              example:
+                data:
+                  - user_id: 7
+                    name: Nina Gomez
+                    email: nina@example.com
+                    required: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/{id}/attendees/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/MeetingId'
+      - in: path
+        name: userId
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    delete:
+      tags: [Attendees]
+      summary: Remove an attendee from a meeting
+      responses:
+        '204':
+          description: Attendee removed.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/users/{id}/availability:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      tags: [Availability]
+      summary: Create an availability slot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAvailability'
+            example:
+              available_start: '2026-11-01T09:00:00Z'
+              available_end: '2026-11-01T17:00:00Z'
+      responses:
+        '201':
+          description: Availability created.
+          content:
+            application/json:
+              example:
+                data:
+                  id: 11
+                  user_id: 7
+                  available_start: '2026-11-01T09:00:00.000Z'
+                  available_end: '2026-11-01T17:00:00.000Z'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    get:
+      tags: [Availability]
+      summary: Get all availability slots for a user
+      responses:
+        '200':
+          description: User availability.
+          content:
+            application/json:
+              example:
+                data:
+                  - id: 11
+                    user_id: 7
+                    available_start: '2026-11-01T09:00:00.000Z'
+                    available_end: '2026-11-01T17:00:00.000Z'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/availability/{id}:
+    delete:
+      tags: [Availability]
+      summary: Delete an availability slot
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '204':
+          description: Availability slot deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  parameters:
+    MeetingId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status, service, uptime]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: MeetingLoop
+        uptime:
+          type: number
+          description: Process uptime in seconds.
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              oneOf:
+                - type: object
+                  nullable: true
+                - type: array
+    CreateMeeting:
+      type: object
+      required: [title, start_time, end_time, organizer_id, attendees]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        organizer_id:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          maxLength: 50
+          default: scheduled
+        attendees:
+          type: array
+          minItems: 1
+          items:
+            oneOf:
+              - type: integer
+                minimum: 1
+              - type: object
+                required: [user_id]
+                properties:
+                  user_id:
+                    type: integer
+                    minimum: 1
+                  required:
+                    type: boolean
+                    default: true
+    UpdateMeeting:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+          minLength: 1
+          maxLength: 50
+    AddAttendee:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: integer
+          minimum: 1
+        required:
+          type: boolean
+          default: true
+    CreateAvailability:
+      type: object
+      required: [available_start, available_end]
+      properties:
+        available_start:
+          type: string
+          format: date-time
+        available_end:
+          type: string
+          format: date-time
+  responses:
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Validation failed
+              details:
+                - field: title
+                  message: Meeting title is required
+    NotFound:
+      description: Requested meeting, user, attendee, or availability slot was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MEETING_NOT_FOUND
+              message: Meeting with id 99999 was not found
+              details:
+                meeting_id: 99999
+    Conflict:
+      description: The requested attendee schedule overlaps an existing meeting.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: SCHEDULING_CONFLICT
+              message: The requested schedule conflicts with an existing meeting
+              details:
+                conflictingMeetings:
+                  - meetingId: 3
+                    title: Sprint Planning
