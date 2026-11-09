@@ -22,7 +22,7 @@ Backend modules (`code/src/modules/`):
 | Meeting Management | `meetings/`, `users/` | Meetings CRUD, attendees, availability, conflict check, users list |
 | Action Item and Dependency Management | `action-items-dependencies/` | Dependencies, readiness, action items, prerequisites |
 
-Each module folder has its own README with endpoint details. Meeting Management is also documented in `code/docs/meeting-management.openapi.yaml`.
+Each module folder has its own README with endpoint details. Both modules are documented as OpenAPI 3.0 files in `code/docs/`: `meeting-management.openapi.yaml` and `action-items-dependencies.openapi.yaml`. They can be viewed by pasting them into https://editor.swagger.io.
 
 ## Prerequisites
 
