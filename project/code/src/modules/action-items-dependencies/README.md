@@ -18,6 +18,8 @@ querying its tables. No part of this module calls an LLM.
 
 ## Endpoints
 
+Full specification: `project/code/docs/action-items-dependencies.openapi.yaml` (OpenAPI 3.0).
+
 | Method | Path | Success | Errors |
 |---|---|---|---|
 | POST | `/api/meetings/:id/dependencies` | 201 | 422 invalid input or gap violated, 404 meeting not found, 409 self-link, duplicate, or cycle |
