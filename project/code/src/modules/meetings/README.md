@@ -35,11 +35,11 @@ Validation errors return HTTP 422, missing resources return HTTP 404, and schedu
 After applying `schema.sql` (which creates `users`), apply the availability migration:
 
 ```bash
-psql -h localhost -U postgres -d meetingloop -f migrations/001_user_availability.sql
+psql -h localhost -U postgres -d meetingloop -f ../data/migrations/001_user_availability.sql   # from project/code
 ```
 
 ## Documentation and tests
 
 - OpenAPI 3.0 specification: `docs/meeting-management.openapi.yaml`
-- Postman collection: `tests/postman/MeetingLoop.postman_collection.json`
+- Postman collection: `project/tests/postman/MeetingLoop.postman_collection.json`
 - Automated tests: `npm test`
