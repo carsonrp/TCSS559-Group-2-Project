@@ -1,5 +1,6 @@
 {
   "info": {
+    "_postman_id": "24c23dd5-a3bc-49aa-aaf7-d5adf7727ff0",
     "name": "MeetingLoop - Action Item and Dependency Management",
     "description": "Run in order against a fresh database (schema.sql, migrations 001 and 002, seed.sql, seed_action_items_dependencies.sql). Readiness requests pin as_of so results do not depend on today's date.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"

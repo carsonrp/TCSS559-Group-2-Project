@@ -1,7 +1,7 @@
 # Action Item and Dependency Management module
 
 Decides whether a meeting can proceed. It owns three tables: `meeting_dependencies`,
-`action_items`, and `prerequisites` (see `migrations/002_action_items_dependencies.sql`).
+`action_items`, and `prerequisites` (see `project/data/migrations/002_action_items_dependencies.sql`).
 Meeting data is read through Meeting Management's `getMeetingById` service, never by
 querying its tables. No part of this module calls an LLM.
 
@@ -62,10 +62,11 @@ AI-created items always start as `proposed` and count only after a user confirms
 ## Setup and tests
 
 ```bash
-psql -U postgres -d meetingloop -f migrations/002_action_items_dependencies.sql
-psql -U postgres -d meetingloop -f seed_action_items_dependencies.sql   # after seed.sql
+# from project/code; full setup order is in project/README.md
+psql -U postgres -d meetingloop -f ../data/migrations/002_action_items_dependencies.sql
+psql -U postgres -d meetingloop -f ../data/seed_action_items_dependencies.sql   # after seed.sql
 npm test                                                                # unit tests
 ```
 
-Postman: `tests/postman/ActionItemsDependencies.postman_collection.json`, run in order
+Postman: `project/tests/postman/ActionItemsDependencies.postman_collection.json`, run in order
 against a freshly seeded database.
