@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import meetingRouter from './src/modules/meetings/index.js';
 import userRouter from './src/modules/users/index.js';
+import insightRouter from './src/modules/insights/index.js';
 import { errorHandler, notFoundHandler } from './src/common/errors/index.js';
 
 const app = express();
@@ -26,6 +27,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/meetings', meetingRouter);
 app.use('/api/users', userRouter);
+app.use('/api/insights', insightRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

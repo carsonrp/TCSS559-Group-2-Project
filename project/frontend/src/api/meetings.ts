@@ -102,3 +102,91 @@ export function createMeeting(payload: CreateMeetingPayload) {
 export function fetchUsers() {
   return request<Person[]>('/api/users');
 }
+
+// ---- Meeting Insights ----
+
+export type WorkingHoursReason = 'weekend' | 'starts_early' | 'ends_late' | null;
+
+export interface InsightParticipant {
+  user_id: number;
+  name: string;
+  role: 'organizer' | 'required' | 'optional';
+  department: string | null;
+  team: string | null;
+  within_working_hours: boolean;
+  reason: WorkingHoursReason;
+  time_zone: string;
+  local_start: string;
+  local_end: string;
+}
+
+export interface InsightConflict {
+  user_id: number;
+  name: string | null;
+  meeting_id: number;
+  title: string;
+  start_time: string;
+  end_time: string;
+}
+
+export interface MeetingInsights {
+  meeting_id: number;
+  title: string;
+  status: MeetingStatus;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  participant_count: number;
+  required_count: number;
+  optional_count: number;
+  person_hours: number;
+  departments: string[];
+  time_zones: { time_zone: string; count: number }[];
+  outside_working_hours_count: number;
+  conflict_count: number;
+  participants: InsightParticipant[];
+  conflicts: InsightConflict[];
+}
+
+export interface InsightsSummary {
+  range: { start: string | null; end: string | null };
+  totals: {
+    meetings: number;
+    active_meetings: number;
+    meeting_hours: number;
+    person_hours: number;
+    average_duration_minutes: number;
+    average_participants: number;
+    meetings_outside_working_hours: number;
+  };
+  attendance: { required: number; optional: number; optional_share: number };
+  by_status: { status: MeetingStatus; count: number }[];
+  by_department: { department: string; person_hours: number; meetings: number }[];
+  people: {
+    user_id: number;
+    name: string;
+    department: string;
+    meetings: number;
+    hours: number;
+    outside_working_hours: number;
+  }[];
+  outside_working_hours: {
+    meeting_id: number;
+    title: string;
+    start_time: string;
+    user_id: number;
+    name: string;
+    local_start: string;
+    time_zone: string;
+    reason: WorkingHoursReason;
+  }[];
+}
+
+export function fetchMeetingInsights(id: number | string) {
+  return request<MeetingInsights>(`/api/insights/meetings/${id}`);
+}
+
+export function fetchInsightsSummary(start: Date, end: Date) {
+  const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+  return request<InsightsSummary>(`/api/insights/summary?${params}`);
+}

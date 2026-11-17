@@ -1,16 +1,39 @@
+import { useState } from 'react';
 import './App.css';
 import Calendar from './Calendar/Calendar';
+import InsightsPage from './Insights/InsightsPage';
 import { useTheme } from './theme';
+
+type View = 'calendar' | 'insights';
 
 function App() {
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
+  const [view, setView] = useState<View>('calendar');
 
   return (
     <div className="App">
       <header className="App-header">
         <h1>MeetingLoop</h1>
         <p>Team meeting calendar</p>
+        <nav className="app-tabs" aria-label="Views">
+          <button
+            type="button"
+            className={view === 'calendar' ? 'active' : ''}
+            aria-current={view === 'calendar' ? 'page' : undefined}
+            onClick={() => setView('calendar')}
+          >
+            Calendar
+          </button>
+          <button
+            type="button"
+            className={view === 'insights' ? 'active' : ''}
+            aria-current={view === 'insights' ? 'page' : undefined}
+            onClick={() => setView('insights')}
+          >
+            Insights
+          </button>
+        </nav>
         <button
           type="button"
           className="theme-toggle"
@@ -22,9 +45,7 @@ function App() {
           {isDark ? 'Light mode' : 'Dark mode'}
         </button>
       </header>
-      <main>
-        <Calendar />
-      </main>
+      <main>{view === 'calendar' ? <Calendar /> : <InsightsPage />}</main>
     </div>
   );
 }

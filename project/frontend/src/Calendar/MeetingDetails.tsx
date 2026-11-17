@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchMeeting, MeetingDetail } from '../api/meetings';
 import { statusColor, statusLabel } from './status';
+import MeetingInsightsSection from '../Insights/MeetingInsightsSection';
 
 interface Props {
   meetingId: number;
@@ -67,6 +68,8 @@ export default function MeetingDetails({ meetingId, onClose }: Props) {
                 </li>
               ))}
             </ul>
+
+            <MeetingInsightsSection meetingId={meeting.id} />
           </>
         )}
       </aside>

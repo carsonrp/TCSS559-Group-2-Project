@@ -117,15 +117,15 @@ export default function Calendar() {
             center: 'title',
             end: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek',
           }}
-          height="auto"
+          // Fixed height: time-grid views scroll internally through the full 24 hours,
+          // so meetings at any hour (e.g. across time zones) are never hidden.
+          height={760}
           nowIndicator
           navLinks
           dayMaxEvents
           selectable
           selectMirror
-          slotMinTime="07:00:00"
-          slotMaxTime="21:00:00"
-          scrollTime="08:00:00"
+          scrollTime="07:00:00"
           businessHours={{ daysOfWeek: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00' }}
           events={loadEvents}
           eventClick={handleEventClick}
