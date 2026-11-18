@@ -1,0 +1,248 @@
+openapi: 3.0.3
+info:
+  title: MeetingLoop Calendar Service API
+  version: 1.0.0
+  description: Calendar events and shared availability backed by PostgreSQL.
+servers:
+  - url: http://localhost:3010
+tags:
+  - name: Calendar events
+  - name: Availability
+paths:
+  /calendar/events:
+    post:
+      tags: [Calendar events]
+      summary: Create or synchronize a meeting event
+      description: Idempotent by meeting_id; repeated creates update the existing event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventInput'
+            example:
+              meeting_id: 17
+              start_time: '2026-11-18T10:00:00Z'
+              end_time: '2026-11-18T11:00:00Z'
+              status: scheduled
+      responses:
+        '201':
+          description: Event created or synchronized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /calendar/events/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Calendar events]
+      summary: Get an event by calendar event id
+      responses:
+        '200':
+          description: Event found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Calendar events]
+      summary: Update an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdate'
+      responses:
+        '200':
+          description: Event updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Calendar events]
+      summary: Delete an event
+      responses:
+        '204':
+          description: Event deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /calendar/events/by-meeting/{meetingId}:
+    parameters:
+      - name: meetingId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    put:
+      tags: [Calendar events]
+      summary: Synchronize a meeting event by meeting id
+      description: Used by Meeting Service for updates; event fields are partial.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdate'
+      responses:
+        '200':
+          description: Event updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Calendar events]
+      summary: Delete a meeting event by meeting id
+      responses:
+        '204':
+          description: Event deleted if it existed.
+  /calendar/availability:
+    get:
+      tags: [Availability]
+      summary: Find shared available time slots
+      description: Intersects stored user_availability windows and subtracts scheduled calendar events.
+      parameters:
+        - name: users
+          in: query
+          required: true
+          description: Comma-separated, distinct positive user ids.
+          schema:
+            type: string
+          example: '1,2,3'
+      responses:
+        '200':
+          description: Available slots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [availableSlots]
+                properties:
+                  availableSlots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TimeSlot'
+              example:
+                availableSlots:
+                  - start: '2026-11-18T13:00:00.000Z'
+                    end: '2026-11-18T14:30:00.000Z'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  parameters:
+    EventId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  schemas:
+    EventInput:
+      type: object
+      required: [meeting_id, start_time, end_time]
+      properties:
+        meeting_id:
+          type: integer
+          example: 17
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+          default: scheduled
+    EventUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+    CalendarEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventInput'
+        - type: object
+          required: [id, created_at, updated_at]
+          properties:
+            id:
+              type: integer
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    EventEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CalendarEvent'
+    TimeSlot:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+  responses:
+    InvalidJson:
+      description: Invalid JSON request body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

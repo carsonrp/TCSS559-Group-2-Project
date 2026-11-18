@@ -1,6 +1,11 @@
 import AppError from '../../common/errors/AppError.js';
-// Meeting data comes through Meeting Management's service, not its tables.
+// Public dependency reads use Meeting Management's service. Schedule propagation
+// uses its repository with the dependency transaction's query client.
 import { getMeetingById } from '../meetings/meetingService.js';
+import { enforceMeetingDependencies } from '../meetings/dependencyEnforcementService.js';
+import { sendDependencyBlockedEmail, sendRescheduledEmail } from '../notifications/notification.service.js';
+import { updateCalendarEvent } from '../calendar/calendarClient.js';
+import { runExternalEffects } from '../../common/services/runExternalEffects.js';
 import {
   dependencyExists,
   findDownstreamDependencies,
@@ -55,7 +60,7 @@ export function earliestAllowedStart(upstream, minGapHours) {
 // pending:   order holds but the upstream meeting has not happened yet
 // violated:  the meeting starts too early, or the upstream meeting was cancelled
 export function dependencyStatus(meeting, upstream, minGapHours, asOf = new Date()) {
-  if (upstream.status === 'cancelled') {
+  if (upstream.status === 'cancelled' || upstream.status === 'blocked') {
     return 'violated';
   }
   if (new Date(meeting.start_time) < earliestAllowedStart(upstream, minGapHours)) {
@@ -82,7 +87,7 @@ export async function addDependency(meetingIdValue, payload = {}) {
     });
   }
 
-  return withDependencyGraphLock(async (client) => {
+  const result = await withDependencyGraphLock(async (client) => {
     if (await dependencyExists(meetingId, upstreamMeetingId, client)) {
       throw new AppError('This dependency already exists', 409, 'DUPLICATE_DEPENDENCY', {
         meeting_id: meetingId,
@@ -118,8 +123,30 @@ export async function addDependency(meetingIdValue, payload = {}) {
       { meeting_id: meetingId, upstream_meeting_id: upstreamMeetingId, min_gap_hours: minGapHours },
       client
     );
-    return { ...dependency, status: dependencyStatus(meeting, upstream, minGapHours) };
+    const updatedMeetings = await enforceMeetingDependencies(meetingId, client, {
+      reason: 'Dependency added',
+    });
+    return {
+      dependency: { ...dependency, status: dependencyStatus(meeting, upstream, minGapHours) },
+      updatedMeetings,
+    };
   });
+
+  const effects = result.updatedMeetings.map((change) => async () => {
+    const updatedMeeting = await getMeetingById(change.id);
+    await updateCalendarEvent(updatedMeeting);
+    if (change.status === 'blocked') {
+      return sendDependencyBlockedEmail(updatedMeeting, change.reason, change.previous_start_time);
+    }
+    return sendRescheduledEmail(
+      updatedMeeting,
+      change.previous_start_time,
+      change.start_time,
+      change.reason
+    );
+  });
+  await runExternalEffects(effects);
+  return result.dependency;
 }
 
 function summarizeMeeting(meeting) {

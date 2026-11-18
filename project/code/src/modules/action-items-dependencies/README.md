@@ -2,8 +2,9 @@
 
 Decides whether a meeting can proceed. It owns three tables: `meeting_dependencies`,
 `action_items`, and `prerequisites` (see `project/data/migrations/002_action_items_dependencies.sql`).
-Meeting data is read through Meeting Management's `getMeetingById` service, never by
-querying its tables. No part of this module calls an LLM.
+Meeting data for dependency and readiness reads uses Meeting Management's
+`getMeetingById` service. Transactional schedule propagation uses its repository
+with the dependency graph transaction's query client. No part of this module calls an LLM.
 
 ## Files
 
@@ -12,6 +13,7 @@ querying its tables. No part of this module calls an LLM.
 | `routes.js` | Endpoints and request validation (express-validator) |
 | `controller.js` | HTTP request and response handling |
 | `dependencyService.js` | Dependency rules: self-link, duplicate, cycle, minimum gap; dependency status |
+| `../meetings/dependencyEnforcementService.js` | Transactional graph traversal, blocked-state propagation, automatic rescheduling |
 | `readinessService.js` | Readiness rules (`evaluateReadiness` is a pure function, unit-tested) |
 | `actionItemService.js` | Action items, status lifecycle, prerequisites |
 | `dependencyRepository.js`, `actionItemRepository.js` | Parameterized SQL |
@@ -39,14 +41,16 @@ change with the calendar.
 **Adding a dependency**, in order: validate input (422), both meetings exist (404),
 self-link (409), duplicate (409), cycle via a recursive query over the graph (409),
 minimum gap between the upstream meeting's end and this meeting's start (422), then insert (201).
-The cycle check and insert run in one transaction holding an advisory lock, so two
-concurrent requests cannot create a cycle together.
+The cycle check, insert, and resulting schedule propagation run in one transaction
+holding an advisory lock, so two concurrent requests cannot create a cycle together
+or leave partially updated schedules. When a parent is cancelled or blocked,
+dependent meetings are marked blocked; restoring the parent allows recalculation.
 
 **Readiness:**
 
 | Check | Result |
 |---|---|
-| Upstream dependency violated (order broken or upstream cancelled) | Blocking |
+| Upstream dependency violated (order broken, upstream cancelled, or upstream blocked) | Blocking |
 | Required prerequisite done | Complete |
 | Required, not done, due date passed | Blocking (`overdue`, or `missing` for a document without a link) |
 | Required, not done, not yet due | At risk |
@@ -66,6 +70,8 @@ AI-created items always start as `proposed` and count only after a user confirms
 ```bash
 # from project/code; full setup order is in project/README.md
 psql -U postgres -d meetingloop -f ../data/migrations/002_action_items_dependencies.sql
+psql -U postgres -d meetingloop -f ../data/migrations/003_calendar_events.sql
+psql -U postgres -d meetingloop -f ../data/migrations/004_meeting_schedule_changes.sql
 psql -U postgres -d meetingloop -f ../data/seed_action_items_dependencies.sql   # after seed.sql
 npm test                                                                # unit tests
 ```

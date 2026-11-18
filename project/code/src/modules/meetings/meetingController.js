@@ -6,6 +6,10 @@ import {
   updateMeeting,
 } from './meetingService.js';
 import { validateMeetingSchedule } from './conflictService.js';
+import {
+  getMeetingDependencyStatus,
+  recalculateMeetingDependencies,
+} from './dependencyEnforcementService.js';
 
 export async function createMeetingController(req, res, next) {
   try {
@@ -70,11 +74,31 @@ export async function validateMeetingScheduleController(req, res, next) {
   }
 }
 
+export async function getMeetingDependencyStatusController(req, res, next) {
+  try {
+    const result = await getMeetingDependencyStatus(req.params.id);
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function recalculateMeetingDependenciesController(req, res, next) {
+  try {
+    const updatedMeetings = await recalculateMeetingDependencies(req.params.id);
+    res.status(200).json({ updatedMeetings });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export default {
   createMeeting: createMeetingController,
   deleteMeeting: deleteMeetingController,
   getMeetingById: getMeetingByIdController,
+  getMeetingDependencyStatus: getMeetingDependencyStatusController,
   listMeetings: listMeetingsController,
   updateMeeting: updateMeetingController,
   validateMeetingSchedule: validateMeetingScheduleController,
+  recalculateMeetingDependencies: recalculateMeetingDependenciesController,
 };

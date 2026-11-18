@@ -30,6 +30,10 @@ export function errorHandler(rawError, _req, res, _next) {
   const message = error?.message || 'An unexpected error occurred';
   const details = error?.details ?? null;
 
+  if (code === 'DEPENDENCY_CYCLE_DETECTED') {
+    return res.status(statusCode).json({ error: 'Dependency cycle detected' });
+  }
+
   const payload = {
     error: {
       code,
