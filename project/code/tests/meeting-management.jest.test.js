@@ -11,6 +11,10 @@ const meetingRepository = {
   lockUserRecords: jest.fn(),
   lockMeetingRecord: jest.fn(),
   insertScheduleChange: jest.fn(),
+  findMeetingParticipants: jest.fn(),
+  findMeetingsByIds: jest.fn(),
+  lockMeetingRecords: jest.fn(),
+  updateMeetingSchedule: jest.fn(),
   updateMeetingRecord: jest.fn(),
   withUserLocks: jest.fn(),
 };
@@ -24,8 +28,9 @@ const availabilityRepository = {
 const attendeeRepository = {
   findMeetingAttendeeIds: jest.fn(),
 };
-const dependencyEnforcementService = {
-  enforceMeetingDependencies: jest.fn(),
+// Stand-in for the dependency rules the Action Item and Dependency module registers.
+const scheduleRules = {
+  planDependencyChanges: jest.fn(),
 };
 const notificationService = {
   sendMeetingCreatedEmail: jest.fn(),
@@ -43,11 +48,12 @@ const calendarClient = {
 jest.unstable_mockModule('../src/modules/meetings/meetingRepository.js', () => meetingRepository);
 jest.unstable_mockModule('../src/modules/meetings/attendeeRepository.js', () => attendeeRepository);
 jest.unstable_mockModule('../src/modules/meetings/availabilityRepository.js', () => availabilityRepository);
-jest.unstable_mockModule('../src/modules/meetings/dependencyEnforcementService.js', () => dependencyEnforcementService);
 jest.unstable_mockModule('../src/modules/notifications/notification.service.js', () => notificationService);
 jest.unstable_mockModule('../src/modules/calendar/calendarClient.js', () => calendarClient);
 
 const meetingService = await import('../src/modules/meetings/meetingService.js');
+const { registerScheduleRules } = await import('../src/modules/meetings/scheduleChangeService.js');
+registerScheduleRules(scheduleRules);
 const conflictService = await import('../src/modules/meetings/conflictService.js');
 const availabilityService = await import('../src/modules/meetings/availabilityService.js');
 
@@ -65,7 +71,8 @@ const existingMeeting = {
 beforeEach(() => {
   jest.resetAllMocks();
   meetingRepository.withUserLocks.mockImplementation(async (_ids, callback) => callback({ transaction: true }));
-  dependencyEnforcementService.enforceMeetingDependencies.mockResolvedValue([]);
+  scheduleRules.planDependencyChanges.mockResolvedValue([]);
+  meetingRepository.findMeetingParticipants.mockResolvedValue([]);
   Object.values(notificationService).forEach((send) => send.mockResolvedValue({ sent: true }));
   Object.values(calendarClient).forEach((request) => request.mockResolvedValue(null));
   meetingRepository.lockMeetingRecord.mockResolvedValue(true);
@@ -160,7 +167,7 @@ describe('meeting management services', () => {
       .mockResolvedValueOnce(updatedMeeting)
       .mockResolvedValueOnce(dependentMeeting);
     meetingRepository.updateMeetingRecord.mockResolvedValue(updatedMeeting);
-    dependencyEnforcementService.enforceMeetingDependencies.mockResolvedValue([{
+    scheduleRules.planDependencyChanges.mockResolvedValue([{
       ...dependentMeeting,
       previous_start_time: '2026-11-16T09:00:00.000Z',
       reason: 'Parent meeting rescheduled',

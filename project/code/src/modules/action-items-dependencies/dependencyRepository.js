@@ -77,6 +77,16 @@ export async function findUpstreamDependencies(meetingId, queryable = pool) {
   return result.rows;
 }
 
+// The whole dependency graph, read inside the caller's transaction.
+export async function findDependencyGraph(queryable = pool) {
+  const result = await queryable.query(
+    `SELECT id, meeting_id, upstream_meeting_id, min_gap_hours
+     FROM meeting_dependencies
+     ORDER BY upstream_meeting_id, meeting_id`
+  );
+  return result.rows;
+}
+
 export async function findDownstreamDependencies(meetingId, queryable = pool) {
   const result = await queryable.query(
     `
@@ -92,6 +102,7 @@ export async function findDownstreamDependencies(meetingId, queryable = pool) {
 
 export default {
   dependencyExists,
+  findDependencyGraph,
   findDownstreamDependencies,
   findUpstreamDependencies,
   insertDependency,

@@ -5,10 +5,8 @@ import {
   createMeetingController,
   deleteMeetingController,
   getMeetingByIdController,
-  getMeetingDependencyStatusController,
   listMeetingsController,
   updateMeetingController,
-  recalculateMeetingDependenciesController,
   validateMeetingScheduleController,
 } from './meetingController.js';
 
@@ -128,18 +126,6 @@ meetingRouter.get(
 );
 
 meetingRouter.get('/:id', [param('id').isInt({ min: 1 }).withMessage('id must be a positive integer')], handleValidationErrors, getMeetingByIdController);
-meetingRouter.get(
-  '/:id/dependency-status',
-  [param('id').isInt({ min: 1 }).withMessage('id must be a positive integer')],
-  handleValidationErrors,
-  getMeetingDependencyStatusController
-);
-meetingRouter.post(
-  '/:id/recalculate-dependencies',
-  [param('id').isInt({ min: 1 }).withMessage('id must be a positive integer')],
-  handleValidationErrors,
-  recalculateMeetingDependenciesController
-);
 
 meetingRouter.put(
   '/:id',

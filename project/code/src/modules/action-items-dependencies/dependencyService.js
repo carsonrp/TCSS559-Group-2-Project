@@ -1,11 +1,8 @@
 import AppError from '../../common/errors/AppError.js';
-// Public dependency reads use Meeting Management's service. Schedule propagation
-// uses its repository with the dependency transaction's query client.
+// Meeting data and schedule writes go through Meeting Management's services, not its tables.
 import { getMeetingById } from '../meetings/meetingService.js';
-import { enforceMeetingDependencies } from '../meetings/dependencyEnforcementService.js';
-import { sendDependencyBlockedEmail, sendRescheduledEmail } from '../notifications/notification.service.js';
-import { updateCalendarEvent } from '../calendar/calendarClient.js';
-import { runExternalEffects } from '../../common/services/runExternalEffects.js';
+import { applyScheduleChanges, notifyScheduleChanges } from '../meetings/scheduleChangeService.js';
+import { planDependencyChanges } from './scheduleRuleService.js';
 import {
   dependencyExists,
   findDownstreamDependencies,
@@ -123,29 +120,15 @@ export async function addDependency(meetingIdValue, payload = {}) {
       { meeting_id: meetingId, upstream_meeting_id: upstreamMeetingId, min_gap_hours: minGapHours },
       client
     );
-    const updatedMeetings = await enforceMeetingDependencies(meetingId, client, {
-      reason: 'Dependency added',
-    });
+    const planned = await planDependencyChanges(meetingId, client, { reason: 'Dependency added' });
+    const updatedMeetings = await applyScheduleChanges(planned, client);
     return {
       dependency: { ...dependency, status: dependencyStatus(meeting, upstream, minGapHours) },
       updatedMeetings,
     };
   });
 
-  const effects = result.updatedMeetings.map((change) => async () => {
-    const updatedMeeting = await getMeetingById(change.id);
-    await updateCalendarEvent(updatedMeeting);
-    if (change.status === 'blocked') {
-      return sendDependencyBlockedEmail(updatedMeeting, change.reason, change.previous_start_time);
-    }
-    return sendRescheduledEmail(
-      updatedMeeting,
-      change.previous_start_time,
-      change.start_time,
-      change.reason
-    );
-  });
-  await runExternalEffects(effects);
+  await notifyScheduleChanges(result.updatedMeetings);
   return result.dependency;
 }
 

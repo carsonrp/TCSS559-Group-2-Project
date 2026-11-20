@@ -20,6 +20,14 @@ function fromPostgresError(error) {
       reason: error.message,
     });
   }
+  if (error?.code === '23503' && /update or delete/i.test(error.message ?? '')) {
+    return new AppError(
+      'This record is still referenced by other data (for example dependencies or action items)',
+      409,
+      'RECORD_IN_USE',
+      { constraint: error.constraint, table: error.table }
+    );
+  }
   return error;
 }
 

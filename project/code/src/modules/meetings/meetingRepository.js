@@ -171,15 +171,6 @@ export async function findMeetingById(id, queryable = pool) {
   };
 }
 
-export async function findDependencyGraph(queryable = pool) {
-  const result = await queryable.query(
-    `SELECT id, meeting_id, upstream_meeting_id, min_gap_hours
-     FROM meeting_dependencies
-     ORDER BY upstream_meeting_id, meeting_id`
-  );
-  return result.rows;
-}
-
 export async function findMeetingsByIds(ids, queryable = pool) {
   if (ids.length === 0) {
     return [];

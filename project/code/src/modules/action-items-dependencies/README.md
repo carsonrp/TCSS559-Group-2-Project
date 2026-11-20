@@ -2,9 +2,11 @@
 
 Decides whether a meeting can proceed. It owns three tables: `meeting_dependencies`,
 `action_items`, and `prerequisites` (see `project/data/migrations/002_action_items_dependencies.sql`).
-Meeting data for dependency and readiness reads uses Meeting Management's
-`getMeetingById` service. Transactional schedule propagation uses its repository
-with the dependency graph transaction's query client. No part of this module calls an LLM.
+This module owns the dependency rules, including what must change when a meeting moves.
+It never queries Meeting Management's tables: it reads meetings through `getMeetingById`
+and applies schedule changes through `meetings/scheduleChangeService.js`. Meeting
+Management, in turn, calls this module's rules through a hook registered in `index.js`,
+so it never imports this module. No part of this module calls an LLM.
 
 ## Files
 
@@ -13,7 +15,8 @@ with the dependency graph transaction's query client. No part of this module cal
 | `routes.js` | Endpoints and request validation (express-validator) |
 | `controller.js` | HTTP request and response handling |
 | `dependencyService.js` | Dependency rules: self-link, duplicate, cycle, minimum gap; dependency status |
-| `../meetings/dependencyEnforcementService.js` | Transactional graph traversal, blocked-state propagation, automatic rescheduling |
+| `scheduleRules.js` | Pure schedule rules: topological order, connected meetings, which meetings move or become blocked (unit-tested) |
+| `scheduleRuleService.js` | Plans dependent changes inside a transaction; dependency-status and recalculation endpoints |
 | `readinessService.js` | Readiness rules (`evaluateReadiness` is a pure function, unit-tested) |
 | `actionItemService.js` | Action items, status lifecycle, prerequisites |
 | `dependencyRepository.js`, `actionItemRepository.js` | Parameterized SQL |
@@ -26,6 +29,8 @@ Full specification: `project/code/docs/action-items-dependencies.openapi.yaml` (
 |---|---|---|---|
 | POST | `/api/meetings/:id/dependencies` | 201 | 422 invalid input or gap violated, 404 meeting not found, 409 self-link, duplicate, or cycle |
 | GET | `/api/meetings/:id/dependencies` | 200 | 404, 422 |
+| GET | `/api/meetings/:id/dependency-status` | 200 | 404, 422 |
+| POST | `/api/meetings/:id/recalculate-dependencies` | 200 | 404, 409 cycle or scheduling conflict, 422 |
 | GET | `/api/meetings/:id/readiness` | 200 | 404, 422 |
 | POST | `/api/meetings/:id/action-items` | 201 | 404, 422 (owner must be organizer or attendee; AI items need `evidence_quote`) |
 | GET | `/api/action-items?meeting_id=&owner_id=&status=` | 200 | 422 |

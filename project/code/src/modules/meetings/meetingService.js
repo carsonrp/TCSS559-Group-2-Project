@@ -13,8 +13,8 @@ import {
 } from './meetingRepository.js';
 import { findMeetingAttendeeIds } from './attendeeRepository.js';
 import { assertNoSchedulingConflict, normalizeSchedule } from './conflictService.js';
-import { enforceMeetingDependencies } from './dependencyEnforcementService.js';
-import { sendMeetingCreatedEmail, sendMeetingDeletedEmail, sendMeetingUpdatedEmail, sendRescheduledEmail, sendDependencyBlockedEmail } from '../notifications/notification.service.js';
+import { applyScheduleChanges, planDependentChanges, scheduleChangeEffects } from './scheduleChangeService.js';
+import { sendMeetingCreatedEmail, sendMeetingDeletedEmail, sendMeetingUpdatedEmail } from '../notifications/notification.service.js';
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from '../calendar/calendarClient.js';
 import { runExternalEffects } from '../../common/services/runExternalEffects.js';
 
@@ -248,11 +248,12 @@ export async function updateMeeting(id, payload = {}) {
         reason: 'Meeting updated',
       }, client);
     }
-    const changes = await enforceMeetingDependencies(meetingId, client, {
+    const planned = await planDependentChanges(meetingId, client, {
       reason: scheduleChanged(currentMeeting, updated)
         ? 'Parent meeting rescheduled'
         : 'Dependency requirements recalculated after meeting update',
     });
+    const changes = await applyScheduleChanges(planned, client);
     const savedMeeting = await findMeetingById(meetingId, client);
     if (savedMeeting.status !== 'cancelled' && savedMeeting.status !== 'blocked') {
       await assertNoSchedulingConflict({
@@ -268,16 +269,7 @@ export async function updateMeeting(id, payload = {}) {
     () => updateCalendarEvent(result.meeting),
     () => sendMeetingUpdatedEmail(result.meeting, result.previousMeeting),
   ];
-  for (const change of result.dependencyChanges) {
-    effects.push(async () => {
-      const fullMeeting = await getMeetingById(change.id);
-      await updateCalendarEvent(fullMeeting);
-      if (change.status === 'blocked') {
-        return sendDependencyBlockedEmail(fullMeeting, change.reason, change.previous_start_time);
-      }
-      return sendRescheduledEmail(fullMeeting, change.previous_start_time, change.start_time, change.reason);
-    });
-  }
+  effects.push(...scheduleChangeEffects(result.dependencyChanges));
   await runExternalEffects(effects);
   return result.meeting;
 }
