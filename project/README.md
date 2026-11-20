@@ -19,12 +19,12 @@ Backend modules (`code/src/modules/`):
 
 | Module | Folder | Endpoints |
 | --- | --- | --- |
-| Meeting Management | `meetings/`, `users/` | Meetings CRUD, attendees, availability, conflict check, users list |
+| Meeting Management | `meetings/`, `users/` | Meetings CRUD, attendees, availability, conflict check, meeting insights, users list |
 | Action Item and Dependency Management | `action-items-dependencies/` | Dependencies, readiness, action items, prerequisites |
 | Notifications | `notifications/` | Internal email notifications for meeting lifecycle changes |
 | Calendar Service | `services/calendar-service/` | Calendar event CRUD and common-availability slots |
 
-The APIs are documented as OpenAPI 3.0 files in `code/docs/`: `meeting-management.openapi.yaml`, `action-items-dependencies.openapi.yaml`, `calendar-service-openapi.yaml`, `dependency-enforcement-openapi.yaml`, and `notification-service-openapi.yaml`. They can be viewed by pasting them into https://editor.swagger.io.
+The APIs are documented as OpenAPI 3.0 files in `code/docs/`: `meeting-management.openapi.yaml`, `meeting-insights.openapi.yaml`, `action-items-dependencies.openapi.yaml`, `calendar-service-openapi.yaml`, `dependency-enforcement-openapi.yaml`, and `notification-service-openapi.yaml`. They can be viewed by pasting them into https://editor.swagger.io.
 
 ## Prerequisites
 
@@ -98,6 +98,18 @@ Unit tests (no database needed), from `project/code`:
 ```bash
 npm test
 ```
+
+## Meeting Insights API
+
+The Insights service should use Meeting Management rather than querying PostgreSQL:
+
+- `GET /api/insights/summary?start=<ISO-8601>&end=<ISO-8601>` returns statistics for meetings overlapping the inclusive date range.
+- `GET /api/insights/meetings/:id` returns attendee counts, department participation, and attendee details for one meeting.
+
+Summary attendee, unique-person, department, and ranking metrics are based on
+`meeting_attendees` assignments; organizers count only when they are also listed
+as attendees. Missing departments are grouped as `Unassigned`. See
+`code/docs/meeting-insights.openapi.yaml` for the response schemas and examples.
 
 API tests with the Postman collections, against a freshly seeded database and a running server. Import them into Postman, or run them with Newman from `project/code`:
 
