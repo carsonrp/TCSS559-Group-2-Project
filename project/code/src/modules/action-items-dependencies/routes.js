@@ -5,9 +5,11 @@ import {
   addDependencyController,
   addPrerequisiteController,
   createActionItemController,
+  getMeetingDependencyStatusController,
   getReadinessController,
   listActionItemsController,
   listDependenciesController,
+  recalculateMeetingDependenciesController,
   updateActionItemController,
 } from './controller.js';
 import { ACTION_ITEM_STATUSES } from './actionItemService.js';
@@ -38,6 +40,9 @@ router.post(
 );
 
 router.get('/meetings/:id/dependencies', [idParam, asOfQuery], handleValidationErrors, listDependenciesController);
+
+router.get('/meetings/:id/dependency-status', [idParam], handleValidationErrors, getMeetingDependencyStatusController);
+router.post('/meetings/:id/recalculate-dependencies', [idParam], handleValidationErrors, recalculateMeetingDependenciesController);
 
 // Readiness
 router.get('/meetings/:id/readiness', [idParam, asOfQuery], handleValidationErrors, getReadinessController);

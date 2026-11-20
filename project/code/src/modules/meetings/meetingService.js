@@ -5,6 +5,7 @@ import {
   findMeetingById,
   findMeetings,
   findUsersByIds,
+  insertScheduleChange,
   lockUserRecords,
   lockMeetingRecord,
   updateMeetingRecord,
@@ -12,6 +13,10 @@ import {
 } from './meetingRepository.js';
 import { findMeetingAttendeeIds } from './attendeeRepository.js';
 import { assertNoSchedulingConflict, normalizeSchedule } from './conflictService.js';
+import { applyScheduleChanges, planDependentChanges, scheduleChangeEffects } from './scheduleChangeService.js';
+import { sendMeetingCreatedEmail, sendMeetingDeletedEmail, sendMeetingUpdatedEmail } from '../notifications/notification.service.js';
+import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from '../calendar/calendarClient.js';
+import { runExternalEffects } from '../../common/services/runExternalEffects.js';
 
 function normalizePositiveId(value, field) {
   const id = Number(value);
@@ -30,6 +35,11 @@ function normalizeTitle(value) {
     throw new AppError('Title cannot exceed 200 characters', 422, 'VALIDATION_ERROR', { field: 'title' });
   }
   return title;
+}
+
+function scheduleChanged(previous, next) {
+  return new Date(previous.start_time).getTime() !== new Date(next.start_time).getTime()
+    || new Date(previous.end_time).getTime() !== new Date(next.end_time).getTime();
 }
 
 export function normalizeAttendeeList(rawAttendees = []) {
@@ -83,7 +93,7 @@ export async function createMeeting(payload = {}) {
     });
   }
 
-  return withUserLocks([organizerId, ...attendees.map(({ user_id }) => user_id)], async (client) => {
+  const meeting = await withUserLocks([organizerId, ...attendees.map(({ user_id }) => user_id)], async (client) => {
     await assertUsersExist([organizerId, ...attendees.map(({ user_id }) => user_id)], client);
     if (status !== 'cancelled') {
       await assertNoSchedulingConflict({
@@ -107,6 +117,11 @@ export async function createMeeting(payload = {}) {
     }
     return savedMeeting;
   });
+  await runExternalEffects([
+    () => createCalendarEvent(meeting),
+    () => sendMeetingCreatedEmail(meeting),
+  ]);
+  return meeting;
 }
 
 function normalizeTimestamp(value, fieldName) {
@@ -176,31 +191,12 @@ export async function updateMeeting(id, payload = {}) {
     });
   }
 
-  const update = {
-    title: payload.title === undefined ? existing.title : normalizeTitle(payload.title),
-    description: payload.description === undefined
-      ? existing.description
-      : payload.description == null ? '' : String(payload.description).trim(),
-    start_time: payload.start_time === undefined ? existing.start_time : payload.start_time,
-    end_time: payload.end_time === undefined ? existing.end_time : payload.end_time,
-    status: payload.status === undefined ? existing.status : String(payload.status).trim(),
-  };
-  const schedule = normalizeSchedule(update.start_time, update.end_time);
-  update.start_time = schedule.start_time;
-  update.end_time = schedule.end_time;
-
-  if (!update.status || update.status.length > 50) {
-    throw new AppError('status must be between 1 and 50 characters', 422, 'VALIDATION_ERROR', {
-      field: 'status',
-    });
-  }
-
   const participantIds = [
     existing.organizer_id,
     ...(await findMeetingAttendeeIds(meetingId)),
   ];
 
-  return withUserLocks(participantIds, async (client) => {
+  const result = await withUserLocks(participantIds, async (client) => {
     if (!(await lockMeetingRecord(meetingId, client))) {
       throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
         meeting_id: meetingId,
@@ -216,21 +212,66 @@ export async function updateMeeting(id, payload = {}) {
     const currentParticipantIds = [currentMeeting.organizer_id, ...currentAttendeeIds];
     await lockUserRecords(currentParticipantIds, client);
 
-    if (update.status !== 'cancelled') {
-      await assertNoSchedulingConflict({
-        ...schedule,
-        attendee_ids: currentParticipantIds,
-        exclude_meeting_id: meetingId,
-      }, client);
+    const transactionUpdate = {
+      title: payload.title === undefined ? currentMeeting.title : normalizeTitle(payload.title),
+      description: payload.description === undefined
+        ? currentMeeting.description
+        : payload.description == null ? '' : String(payload.description).trim(),
+      start_time: payload.start_time === undefined ? currentMeeting.start_time : payload.start_time,
+      end_time: payload.end_time === undefined ? currentMeeting.end_time : payload.end_time,
+      status: payload.status === undefined ? currentMeeting.status : String(payload.status).trim(),
+    };
+    const transactionSchedule = normalizeSchedule(transactionUpdate.start_time, transactionUpdate.end_time);
+    transactionUpdate.start_time = transactionSchedule.start_time;
+    transactionUpdate.end_time = transactionSchedule.end_time;
+    if (!transactionUpdate.status || transactionUpdate.status.length > 50) {
+      throw new AppError('status must be between 1 and 50 characters', 422, 'VALIDATION_ERROR', {
+        field: 'status',
+      });
     }
-    const updated = await updateMeetingRecord(meetingId, update, client);
+
+    const updated = await updateMeetingRecord(meetingId, transactionUpdate, client);
     if (!updated) {
       throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
         meeting_id: meetingId,
       });
     }
-    return findMeetingById(meetingId, client);
-  });
+    if (scheduleChanged(currentMeeting, updated)) {
+      await insertScheduleChange({
+        meeting_id: meetingId,
+        old_start_time: currentMeeting.start_time,
+        old_end_time: currentMeeting.end_time,
+        new_start_time: updated.start_time,
+        new_end_time: updated.end_time,
+        old_status: currentMeeting.status,
+        new_status: updated.status,
+        reason: 'Meeting updated',
+      }, client);
+    }
+    const planned = await planDependentChanges(meetingId, client, {
+      reason: scheduleChanged(currentMeeting, updated)
+        ? 'Parent meeting rescheduled'
+        : 'Dependency requirements recalculated after meeting update',
+    });
+    const changes = await applyScheduleChanges(planned, client);
+    const savedMeeting = await findMeetingById(meetingId, client);
+    if (savedMeeting.status !== 'cancelled' && savedMeeting.status !== 'blocked') {
+      await assertNoSchedulingConflict({
+        start_time: savedMeeting.start_time,
+        end_time: savedMeeting.end_time,
+        attendee_ids: currentParticipantIds,
+        exclude_meeting_id: meetingId,
+      }, client);
+    }
+    return { meeting: savedMeeting, dependencyChanges: changes, previousMeeting: currentMeeting };
+  }, { dependencyGraph: true });
+  const effects = [
+    () => updateCalendarEvent(result.meeting),
+    () => sendMeetingUpdatedEmail(result.meeting, result.previousMeeting),
+  ];
+  effects.push(...scheduleChangeEffects(result.dependencyChanges));
+  await runExternalEffects(effects);
+  return result.meeting;
 }
 
 export async function deleteMeeting(id) {
@@ -243,7 +284,7 @@ export async function deleteMeeting(id) {
   }
   const participantIds = [existing.organizer_id, ...(await findMeetingAttendeeIds(meetingId))];
 
-  return withUserLocks(participantIds, async (client) => {
+  await withUserLocks(participantIds, async (client) => {
     if (!(await lockMeetingRecord(meetingId, client))) {
       throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
         meeting_id: meetingId,
@@ -256,6 +297,10 @@ export async function deleteMeeting(id) {
       });
     }
   });
+  await runExternalEffects([
+    () => deleteCalendarEvent(meetingId),
+    () => sendMeetingDeletedEmail(existing),
+  ]);
 }
 
 export default {

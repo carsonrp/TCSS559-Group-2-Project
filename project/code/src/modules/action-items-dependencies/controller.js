@@ -1,5 +1,6 @@
 import { addDependency, listDependencies } from './dependencyService.js';
 import { getReadiness } from './readinessService.js';
+import { getMeetingDependencyStatus, recalculateMeetingDependencies } from './scheduleRuleService.js';
 import {
   addPrerequisite,
   createActionItem,
@@ -70,6 +71,24 @@ export async function addPrerequisiteController(req, res, next) {
   try {
     const prerequisite = await addPrerequisite(req.params.id, req.body);
     res.status(201).json({ data: prerequisite });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getMeetingDependencyStatusController(req, res, next) {
+  try {
+    const result = await getMeetingDependencyStatus(req.params.id);
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function recalculateMeetingDependenciesController(req, res, next) {
+  try {
+    const updatedMeetings = await recalculateMeetingDependencies(req.params.id);
+    res.status(200).json({ updatedMeetings });
   } catch (error) {
     next(error);
   }

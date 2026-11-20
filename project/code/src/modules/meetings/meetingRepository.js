@@ -1,10 +1,13 @@
 import { pool } from '../../common/db/index.js';
 
-export async function withUserLocks(userIds, callback) {
+export async function withUserLocks(userIds, callback, { dependencyGraph = false } = {}) {
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
+    if (dependencyGraph) {
+      await client.query('SELECT pg_advisory_xact_lock($1)', [559001]);
+    }
     await lockUserRecords(userIds, client);
     const result = await callback(client);
     await client.query('COMMIT');
@@ -168,6 +171,74 @@ export async function findMeetingById(id, queryable = pool) {
   };
 }
 
+export async function findMeetingsByIds(ids, queryable = pool) {
+  if (ids.length === 0) {
+    return [];
+  }
+  const result = await queryable.query(
+    `SELECT id, title, start_time, end_time, organizer_id, status
+     FROM meetings
+     WHERE id = ANY($1::int[])`,
+    [ids]
+  );
+  return result.rows;
+}
+
+export async function findMeetingParticipants(meetingIds, queryable = pool) {
+  if (meetingIds.length === 0) {
+    return [];
+  }
+  const result = await queryable.query(
+    `SELECT meeting_id, user_id
+     FROM meeting_attendees
+     WHERE meeting_id = ANY($1::int[])
+     UNION ALL
+     SELECT id AS meeting_id, organizer_id AS user_id
+     FROM meetings
+     WHERE id = ANY($1::int[])`,
+    [meetingIds]
+  );
+  return result.rows;
+}
+
+export async function lockMeetingRecords(meetingIds, queryable = pool) {
+  if (meetingIds.length === 0) {
+    return;
+  }
+  await queryable.query(
+    'SELECT id FROM meetings WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE',
+    [meetingIds]
+  );
+}
+
+export async function updateMeetingSchedule(id, meetingData, queryable = pool) {
+  await queryable.query(
+    `UPDATE meetings
+     SET start_time = $2, end_time = $3, status = $4
+     WHERE id = $1`,
+    [id, meetingData.start_time, meetingData.end_time, meetingData.status]
+  );
+}
+
+export async function insertScheduleChange(change, queryable = pool) {
+  await queryable.query(
+    `INSERT INTO meeting_schedule_changes
+       (meeting_id, old_start_time, old_end_time, new_start_time, new_end_time,
+        old_status, new_status, reason)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      change.meeting_id,
+      change.old_start_time,
+      change.old_end_time,
+      change.new_start_time,
+      change.new_end_time,
+      change.old_status,
+      change.new_status,
+      change.reason,
+    ]
+  );
+}
+
 export async function lockMeetingRecord(id, queryable = pool) {
   const result = await queryable.query(
     'SELECT id FROM meetings WHERE id = $1 FOR UPDATE',
@@ -210,7 +281,7 @@ export async function findConflictingMeetings(
       SELECT DISTINCT m.id AS meeting_id, m.title
       FROM meetings m
       LEFT JOIN meeting_attendees ma ON ma.meeting_id = m.id
-      WHERE m.status <> 'cancelled'
+      WHERE m.status NOT IN ('cancelled', 'blocked')
         AND m.start_time < $2
         AND m.end_time > $1
         AND (m.organizer_id = ANY($3::int[]) OR ma.user_id = ANY($3::int[]))

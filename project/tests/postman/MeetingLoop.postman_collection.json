@@ -61,6 +61,27 @@
       ]
     },
     {
+      "name": "Meeting Insights",
+      "item": [
+        {
+          "name": "Get meeting statistics summary",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Summary statistics returned', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.totals).to.have.property('meetings'); pm.expect(body).to.have.property('by_status'); pm.expect(body).to.have.property('by_department'); pm.expect(body.people).to.be.an('array'); });"] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/insights/summary?start=2026-11-01T00:00:00Z&end=2026-11-30T23:59:59Z"
+          }
+        },
+        {
+          "name": "Get single meeting insights",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Meeting insights returned', function () { const body = pm.response.json(); pm.response.to.have.status(200); pm.expect(body.data).to.have.property('meetingId'); pm.expect(body.data.attendance).to.have.property('requiredAttendees'); pm.expect(body.data.attendees).to.be.an('array'); });"] } }],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/insights/meetings/{{meetingId}}"
+          }
+        }
+      ]
+    },
+    {
       "name": "Attendees",
       "item": [
         {

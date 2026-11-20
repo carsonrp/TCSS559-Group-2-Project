@@ -20,6 +20,14 @@ function fromPostgresError(error) {
       reason: error.message,
     });
   }
+  if (error?.code === '23503' && /update or delete/i.test(error.message ?? '')) {
+    return new AppError(
+      'This record is still referenced by other data (for example dependencies or action items)',
+      409,
+      'RECORD_IN_USE',
+      { constraint: error.constraint, table: error.table }
+    );
+  }
   return error;
 }
 
@@ -29,6 +37,10 @@ export function errorHandler(rawError, _req, res, _next) {
   const code = error?.code || 'INTERNAL_SERVER_ERROR';
   const message = error?.message || 'An unexpected error occurred';
   const details = error?.details ?? null;
+
+  if (code === 'DEPENDENCY_CYCLE_DETECTED') {
+    return res.status(statusCode).json({ error: 'Dependency cycle detected' });
+  }
 
   const payload = {
     error: {

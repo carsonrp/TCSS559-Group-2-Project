@@ -1,0 +1,243 @@
+openapi: 3.0.3
+info:
+  title: MeetingLoop Dependency Enforcement API
+  version: 1.0.0
+  description: Backend-authoritative dependency scheduling and status.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Dependency enforcement
+paths:
+  /api/meetings/{id}:
+    put:
+      tags: [Dependency enforcement]
+      summary: Update a meeting and enforce dependent schedules
+      description: >
+        Meeting updates and all descendant reschedules/status changes are committed
+        in one PostgreSQL transaction. Descendants retain their duration and are
+        moved to the earliest start after their parent ends plus min_gap_hours.
+        Cancelled or blocked parents block descendants. Conflicts and graph cycles
+        roll back the entire operation.
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  nullable: true
+                start_time:
+                  type: string
+                  format: date-time
+                end_time:
+                  type: string
+                  format: date-time
+                status:
+                  type: string
+                  maxLength: 50
+            example:
+              start_time: '2026-11-18T12:00:00Z'
+              end_time: '2026-11-18T13:00:00Z'
+      responses:
+        '200':
+          description: Meeting updated and dependency changes committed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Meeting'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Dependency cycle, scheduling conflict, or dependency violation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+              example:
+                error: Dependency cycle detected
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/{id}/dependency-status:
+    get:
+      tags: [Dependency enforcement]
+      summary: Get dependency status for a meeting
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      responses:
+        '200':
+          description: Dependency status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyStatus'
+              example:
+                meetingId: 5
+                blocked: true
+                parentMeetings:
+                  - id: 2
+                    title: Sprint Planning
+                    start_time: '2026-11-18T10:00:00Z'
+                    end_time: '2026-11-18T11:00:00Z'
+                    organizer_id: 1
+                    status: scheduled
+                    min_gap_hours: 0
+                childMeetings: []
+                dependencyViolations:
+                  - parentMeetingId: 2
+                    parentStatus: scheduled
+                    earliestAllowedStart: '2026-11-18T11:00:00.000Z'
+                    actualStart: '2026-11-18T08:00:00.000Z'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/meetings/{id}/recalculate-dependencies:
+    post:
+      tags: [Dependency enforcement]
+      summary: Recalculate schedules in the meeting's downstream graph
+      description: All updates, schedule history, and status changes use a single transaction.
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      responses:
+        '200':
+          description: Recalculation completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updatedMeetings]
+                properties:
+                  updatedMeetings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UpdatedMeeting'
+              example:
+                updatedMeetings:
+                  - id: 6
+                    title: Development Review
+                    start_time: '2026-11-18T12:00:00.000Z'
+                    end_time: '2026-11-18T13:00:00.000Z'
+                    status: scheduled
+                    previous_start_time: '2026-11-18T08:00:00Z'
+                    previous_end_time: '2026-11-18T09:00:00Z'
+                    previous_status: scheduled
+                    reason: dependency_recalculation
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Dependency graph contains a cycle or schedule conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  parameters:
+    MeetingId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  schemas:
+    Meeting:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+    UpdatedMeeting:
+      allOf:
+        - $ref: '#/components/schemas/Meeting'
+        - type: object
+          properties:
+            previous_start_time:
+              type: string
+              format: date-time
+            previous_end_time:
+              type: string
+              format: date-time
+            previous_status:
+              type: string
+            reason:
+              type: string
+    DependencyStatus:
+      type: object
+      required: [meetingId, blocked, parentMeetings, childMeetings, dependencyViolations]
+      properties:
+        meetingId:
+          type: integer
+        blocked:
+          type: boolean
+        parentMeetings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Meeting'
+        childMeetings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Meeting'
+        dependencyViolations:
+          type: array
+          items:
+            type: object
+            properties:
+              parentMeetingId:
+                type: integer
+              parentStatus:
+                type: string
+              earliestAllowedStart:
+                type: string
+                format: date-time
+              actualStart:
+                type: string
+                format: date-time
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+  responses:
+    NotFound:
+      description: Meeting not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
