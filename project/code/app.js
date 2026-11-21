@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import meetingRouter from './src/modules/meetings/index.js';
 import availabilityRouter from './src/modules/meetings/availability.routes.js';
 import userRouter from './src/modules/users/index.js';
+import insightRouter from './src/modules/insights/index.js';
 import actionItemsDependenciesRouter from './src/modules/action-items-dependencies/index.js';
 import notificationRouter from './src/modules/notifications/notification.routes.js';
 import insightsRouter from './src/modules/meetings/insights.routes.js';
@@ -30,6 +31,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/meetings', meetingRouter);
 app.use('/api/users', userRouter);
+app.use('/api/insights', insightRouter);
 app.use('/api', availabilityRouter);
 app.use('/api', actionItemsDependenciesRouter);
 app.use('/api/notifications', notificationRouter);

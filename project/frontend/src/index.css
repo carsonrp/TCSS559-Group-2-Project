@@ -21,6 +21,11 @@
   --error-bg: rgba(240, 82, 82, 0.12);
   --error-border: rgba(240, 82, 82, 0.35);
   --error-text: #ff9b9b;
+  --warn: #f2b13a;
+  --warn-bg: rgba(242, 177, 58, 0.1);
+  --warn-border: rgba(242, 177, 58, 0.45);
+  --warn-text: #f5c25e;
+  --ok: #2f9e6e;
 }
 
 :root[data-color-scheme='light'] {
@@ -44,6 +49,11 @@
   --error-bg: #fdecec;
   --error-border: #f3c2c2;
   --error-text: #8a1f1f;
+  --warn: #e0a023;
+  --warn-bg: #fff8e8;
+  --warn-border: #f0d08a;
+  --warn-text: #8a5a00;
+  --ok: #0e855a;
 }
 
 body {
