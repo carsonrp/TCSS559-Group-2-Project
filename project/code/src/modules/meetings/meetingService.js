@@ -14,7 +14,13 @@ import {
 import { findMeetingAttendeeIds } from './attendeeRepository.js';
 import { assertNoSchedulingConflict, normalizeSchedule } from './conflictService.js';
 import { enforceMeetingDependencies } from './dependencyEnforcementService.js';
-import { sendMeetingCreatedEmail, sendMeetingDeletedEmail, sendMeetingUpdatedEmail, sendRescheduledEmail, sendDependencyBlockedEmail } from '../notifications/notification.service.js';
+import {
+  sendMeetingCreatedEmail,
+  sendMeetingDeletedEmail,
+  sendMeetingUpdatedEmail,
+  sendRescheduledEmail,
+  sendDependencyBlockedEmail,
+} from '../notifications/notificationClient.js';
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from '../calendar/calendarClient.js';
 import { runExternalEffects } from '../../common/services/runExternalEffects.js';
 

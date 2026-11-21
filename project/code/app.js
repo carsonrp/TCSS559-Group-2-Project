@@ -5,7 +5,6 @@ import meetingRouter from './src/modules/meetings/index.js';
 import availabilityRouter from './src/modules/meetings/availability.routes.js';
 import userRouter from './src/modules/users/index.js';
 import actionItemsDependenciesRouter from './src/modules/action-items-dependencies/index.js';
-import notificationRouter from './src/modules/notifications/notification.routes.js';
 import insightsRouter from './src/modules/meetings/insights.routes.js';
 import { errorHandler, notFoundHandler } from './src/common/errors/index.js';
 
@@ -28,12 +27,11 @@ app.get('/health', (_req, res) => {
   });
 });
 
+app.use('/api/meetings', insightsRouter);
 app.use('/api/meetings', meetingRouter);
 app.use('/api/users', userRouter);
 app.use('/api', availabilityRouter);
 app.use('/api', actionItemsDependenciesRouter);
-app.use('/api/notifications', notificationRouter);
-app.use('/api/insights', insightsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

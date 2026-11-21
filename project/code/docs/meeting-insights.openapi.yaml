@@ -8,7 +8,7 @@ servers:
 tags:
   - name: Meeting insights
 paths:
-  /api/insights/summary:
+  /api/meetings/stats:
     get:
       tags: [Meeting insights]
       summary: Get meeting statistics for an inclusive date range
@@ -65,7 +65,7 @@ paths:
                     meetingCount: 12
         '422':
           $ref: '#/components/responses/ValidationError'
-  /api/insights/meetings/{id}:
+  /api/meetings/{id}/stats:
     get:
       tags: [Meeting insights]
       summary: Get insights for one meeting

@@ -21,7 +21,7 @@ Backend modules (`code/src/modules/`):
 | --- | --- | --- |
 | Meeting Management | `meetings/`, `users/` | Meetings CRUD, attendees, availability, conflict check, meeting insights, users list |
 | Action Item and Dependency Management | `action-items-dependencies/` | Dependencies, readiness, action items, prerequisites |
-| Notifications | `notifications/` | Internal email notifications for meeting lifecycle changes |
+| Notification Service | `services/notification-service/` | External REST API for meeting lifecycle email notifications |
 | Calendar Service | `services/calendar-service/` | Calendar event CRUD and common-availability slots |
 
 The APIs are documented as OpenAPI 3.0 files in `code/docs/`: `meeting-management.openapi.yaml`, `meeting-insights.openapi.yaml`, `action-items-dependencies.openapi.yaml`, `calendar-service-openapi.yaml`, `dependency-enforcement-openapi.yaml`, and `notification-service-openapi.yaml`. They can be viewed by pasting them into https://editor.swagger.io.
@@ -48,9 +48,9 @@ Edit `.env` and set `DB_PASSWORD` (and the other values if your PostgreSQL setup
 | `DB_HOST`, `DB_PORT` | localhost, 5432 | PostgreSQL location |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD` | meetingloop, postgres, (empty) | PostgreSQL database and credentials |
 | `NODE_ENV` | development | Environment name |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | (empty) | SMTP transport for meeting notification email |
 | `CALENDAR_SERVICE_URL` | (empty) | Calendar Service base URL; set to `http://localhost:3010` to enable HTTP synchronization |
-| `INTERNAL_SERVICE_TOKEN` | (empty) | Shared credential protecting internal notification HTTP routes |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:3020` | Notification Service base URL |
+| `INTERNAL_SERVICE_TOKEN` | (empty) | Shared bearer token for MeetingLoop-to-Notification-Service requests |
 
 ## 2. Set up the database
 
@@ -103,8 +103,8 @@ npm test
 
 The Insights service should use Meeting Management rather than querying PostgreSQL:
 
-- `GET /api/insights/summary?start=<ISO-8601>&end=<ISO-8601>` returns statistics for meetings overlapping the inclusive date range.
-- `GET /api/insights/meetings/:id` returns attendee counts, department participation, and attendee details for one meeting.
+- `GET /api/meetings/stats?start=<ISO-8601>&end=<ISO-8601>` returns statistics for meetings overlapping the inclusive date range.
+- `GET /api/meetings/:id/stats` returns attendee counts, department participation, and attendee details for one meeting.
 
 Summary attendee, unique-person, department, and ranking metrics are based on
 `meeting_attendees` assignments; organizers count only when they are also listed
@@ -147,13 +147,25 @@ on the MeetingLoop API to the Calendar Service base URL; meeting create, update,
 reschedule, and delete operations then synchronize events over HTTP. The
 Calendar Service requires the `003_calendar_events.sql` migration.
 
-SMTP must be configured for email delivery. Without SMTP settings, email
-notifications are explicitly skipped and logged; failures from a configured SMTP
-provider or Calendar Service are surfaced to the API caller after the PostgreSQL
-meeting transaction has committed.
-The notification service depends only on the provider's `sendEmail` interface;
-future SendGrid, Microsoft Graph, or SES adapters can replace the SMTP provider
-without changing meeting or dependency business logic.
+## Notification Service
+
+Email delivery is an external REST service in `code/services/notification-service`;
+Meeting Management sends lifecycle events to it over HTTP rather than importing
+SMTP code. Configure the service independently:
+
+```bash
+cd project/code/services/notification-service
+cp .env.example .env
+```
+
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, and
+`INTERNAL_SERVICE_TOKEN` in that service's `.env`. Set the matching
+`INTERNAL_SERVICE_TOKEN` and `NOTIFICATION_SERVICE_URL=http://localhost:3020`
+in MeetingLoop's `.env`. Start the service with `npm install && npm start`, or
+run `docker compose up --build` from its directory. Provider implementations
+can later replace SMTP without changing meeting or dependency business logic.
+Notification-service failures are surfaced to the API caller after the
+PostgreSQL meeting transaction has committed.
 
 ## Current implementation
 
@@ -162,7 +174,7 @@ Completed:
 - Meeting Management: meeting create, read, update, delete, and list (paging or date range); attendees; user availability; attendee conflict detection; common availability; users list.
 - Action Item and Dependency Management: dependencies with cycle and minimum-gap checks, readiness check, action items with a status lifecycle, prerequisites.
 - Backend dependency enforcement with recursive transactional schedule propagation, blocking, cycle detection, and schedule history.
-- SMTP-backed lifecycle email notifications and an independently deployable Calendar Service.
+- REST-based lifecycle email notifications through an independently deployable Notification Service, and an independently deployable Calendar Service.
 - PostgreSQL schema, sample data, unit tests, Postman collections, Dockerfile.
 
 Planned for Phase III:

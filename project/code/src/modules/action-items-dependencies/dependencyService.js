@@ -3,7 +3,7 @@ import AppError from '../../common/errors/AppError.js';
 // uses its repository with the dependency transaction's query client.
 import { getMeetingById } from '../meetings/meetingService.js';
 import { enforceMeetingDependencies } from '../meetings/dependencyEnforcementService.js';
-import { sendDependencyBlockedEmail, sendRescheduledEmail } from '../notifications/notification.service.js';
+import { sendDependencyBlockedEmail, sendRescheduledEmail } from '../notifications/notificationClient.js';
 import { updateCalendarEvent } from '../calendar/calendarClient.js';
 import { runExternalEffects } from '../../common/services/runExternalEffects.js';
 import {

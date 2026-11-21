@@ -1,0 +1,9 @@
+services:
+  notification-service:
+    build: .
+    env_file:
+      - .env
+    environment:
+      PORT: 3020
+    ports:
+      - "3020:3020"

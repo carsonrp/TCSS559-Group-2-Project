@@ -10,12 +10,8 @@ export const env = {
   DB_USER: process.env.DB_USER || 'postgres',
   DB_PASSWORD: process.env.DB_PASSWORD || 'password',
   NODE_ENV: process.env.NODE_ENV || 'development',
-  SMTP_HOST: process.env.SMTP_HOST || '',
-  SMTP_PORT: Number(process.env.SMTP_PORT) || 0,
-  SMTP_USER: process.env.SMTP_USER || '',
-  SMTP_PASSWORD: process.env.SMTP_PASSWORD || '',
-  SMTP_FROM: process.env.SMTP_FROM || '',
   CALENDAR_SERVICE_URL: process.env.CALENDAR_SERVICE_URL || '',
+  NOTIFICATION_SERVICE_URL: process.env.NOTIFICATION_SERVICE_URL || '',
   INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN || '',
 };
 

@@ -9,7 +9,7 @@ import {
 const router = Router();
 
 router.get(
-  '/summary',
+  '/stats',
   [
     query('start')
       .exists()
@@ -36,7 +36,7 @@ router.get(
 );
 
 router.get(
-  '/meetings/:id',
+  '/:id/stats',
   [param('id').isInt({ min: 1 }).withMessage('id must be a positive integer')],
   handleValidationErrors,
   getSingleMeetingInsightsController

@@ -44,7 +44,7 @@ jest.unstable_mockModule('../src/modules/meetings/meetingRepository.js', () => m
 jest.unstable_mockModule('../src/modules/meetings/attendeeRepository.js', () => attendeeRepository);
 jest.unstable_mockModule('../src/modules/meetings/availabilityRepository.js', () => availabilityRepository);
 jest.unstable_mockModule('../src/modules/meetings/dependencyEnforcementService.js', () => dependencyEnforcementService);
-jest.unstable_mockModule('../src/modules/notifications/notification.service.js', () => notificationService);
+jest.unstable_mockModule('../src/modules/notifications/notificationClient.js', () => notificationService);
 jest.unstable_mockModule('../src/modules/calendar/calendarClient.js', () => calendarClient);
 
 const meetingService = await import('../src/modules/meetings/meetingService.js');

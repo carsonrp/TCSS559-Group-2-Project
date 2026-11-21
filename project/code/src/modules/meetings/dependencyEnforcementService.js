@@ -12,7 +12,7 @@ import {
 } from './meetingRepository.js';
 import { assertNoSchedulingConflict } from './conflictService.js';
 import { findMeetingAttendeeIds } from './attendeeRepository.js';
-import { sendDependencyBlockedEmail, sendRescheduledEmail } from '../notifications/notification.service.js';
+import { sendDependencyBlockedEmail, sendRescheduledEmail } from '../notifications/notificationClient.js';
 import { updateCalendarEvent } from '../calendar/calendarClient.js';
 import { runExternalEffects } from '../../common/services/runExternalEffects.js';
 

@@ -24,7 +24,7 @@ jest.unstable_mockModule('../src/modules/meetings/conflictService.js', () => con
 jest.unstable_mockModule('../src/modules/meetings/attendeeRepository.js', () => ({
   findMeetingAttendeeIds: jest.fn(),
 }));
-jest.unstable_mockModule('../src/modules/notifications/notification.service.js', () => notifications);
+jest.unstable_mockModule('../src/modules/notifications/notificationClient.js', () => notifications);
 jest.unstable_mockModule('../src/modules/calendar/calendarClient.js', () => calendarClient);
 
 const { enforceMeetingDependencies, topologicallySortMeetings } = await import(
