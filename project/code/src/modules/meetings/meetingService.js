@@ -1,135 +1,313 @@
 import AppError from '../../common/errors/AppError.js';
-import { createMeetingRecord, findMeetingById, findMeetingsInRange } from './meetingRepository.js';
+import {
+  createMeetingRecord,
+  deleteMeetingRecord,
+  findMeetingById,
+  findMeetings,
+  findUsersByIds,
+  insertScheduleChange,
+  lockUserRecords,
+  lockMeetingRecord,
+  updateMeetingRecord,
+  withUserLocks,
+} from './meetingRepository.js';
+import { findMeetingAttendeeIds } from './attendeeRepository.js';
+import { assertNoSchedulingConflict, normalizeSchedule } from './conflictService.js';
+import { applyScheduleChanges, planDependentChanges, scheduleChangeEffects } from './scheduleChangeService.js';
+import { sendMeetingCreatedEmail, sendMeetingDeletedEmail, sendMeetingUpdatedEmail } from '../notifications/notification.service.js';
+import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from '../calendar/calendarClient.js';
+import { runExternalEffects } from '../../common/services/runExternalEffects.js';
 
-export function normalizeAttendeeList(rawAttendees) {
+function normalizePositiveId(value, field) {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new AppError(`${field} must be a positive integer`, 422, 'VALIDATION_ERROR', { field });
+  }
+  return id;
+}
+
+function normalizeTitle(value) {
+  const title = typeof value === 'string' ? value.trim() : '';
+  if (!title) {
+    throw new AppError('Meeting title is required', 422, 'VALIDATION_ERROR', { field: 'title' });
+  }
+  if (title.length > 200) {
+    throw new AppError('Title cannot exceed 200 characters', 422, 'VALIDATION_ERROR', { field: 'title' });
+  }
+  return title;
+}
+
+function scheduleChanged(previous, next) {
+  return new Date(previous.start_time).getTime() !== new Date(next.start_time).getTime()
+    || new Date(previous.end_time).getTime() !== new Date(next.end_time).getTime();
+}
+
+export function normalizeAttendeeList(rawAttendees = []) {
   if (!Array.isArray(rawAttendees) || rawAttendees.length === 0) {
     throw new AppError('At least one attendee is required', 422, 'VALIDATION_ERROR', {
       field: 'attendees',
     });
   }
 
-  const normalized = [];
   const seenUserIds = new Set();
-
-  rawAttendees.forEach((attendee) => {
-    const attendeeObject = typeof attendee === 'object' && attendee !== null
-      ? attendee
-      : { user_id: attendee };
-
-    const userId = Number(attendeeObject.user_id ?? attendeeObject);
-
-    if (!Number.isInteger(userId) || userId <= 0) {
-      throw new AppError('Each attendee must include a valid user_id', 422, 'VALIDATION_ERROR', {
-        field: 'attendees',
-      });
-    }
-
+  return rawAttendees.map((attendee) => {
+    const item = typeof attendee === 'number' ? { user_id: attendee } : attendee;
+    const userId = normalizePositiveId(item?.user_id, 'attendees.user_id');
     if (seenUserIds.has(userId)) {
       throw new AppError(`Duplicate attendee user_id: ${userId}`, 422, 'VALIDATION_ERROR', {
         field: 'attendees',
       });
     }
-
+    if (item?.required !== undefined && typeof item.required !== 'boolean') {
+      throw new AppError('required must be a boolean', 422, 'VALIDATION_ERROR', {
+        field: 'attendees.required',
+      });
+    }
     seenUserIds.add(userId);
-
-    normalized.push({
-      user_id: userId,
-      required: attendeeObject.required === true || attendeeObject.required === 'true' || attendeeObject.required === 1,
-    });
+    return { user_id: userId, required: item.required ?? true };
   });
+}
 
-  return normalized;
+async function assertUsersExist(userIds, queryable) {
+  const uniqueIds = [...new Set(userIds)];
+  const existingIds = await findUsersByIds(uniqueIds, queryable);
+  const missingId = uniqueIds.find((id) => !existingIds.includes(id));
+  if (missingId !== undefined) {
+    throw new AppError(`User with id ${missingId} was not found`, 404, 'USER_NOT_FOUND', {
+      user_id: missingId,
+    });
+  }
+}
+
+export async function createMeeting(payload = {}) {
+  const title = normalizeTitle(payload.title);
+  const organizerId = normalizePositiveId(payload.organizer_id, 'organizer_id');
+  const { start_time, end_time } = normalizeSchedule(payload.start_time, payload.end_time);
+  const attendees = normalizeAttendeeList(payload.attendees ?? []);
+  const description = payload.description == null ? '' : String(payload.description).trim();
+  const status = payload.status == null ? 'scheduled' : String(payload.status).trim();
+
+  if (!status || status.length > 50) {
+    throw new AppError('status must be between 1 and 50 characters', 422, 'VALIDATION_ERROR', {
+      field: 'status',
+    });
+  }
+
+  const meeting = await withUserLocks([organizerId, ...attendees.map(({ user_id }) => user_id)], async (client) => {
+    await assertUsersExist([organizerId, ...attendees.map(({ user_id }) => user_id)], client);
+    if (status !== 'cancelled') {
+      await assertNoSchedulingConflict({
+        start_time,
+        end_time,
+        attendee_ids: [organizerId, ...attendees.map(({ user_id }) => user_id)],
+      }, client);
+    }
+    const meeting = await createMeetingRecord({
+      title,
+      description,
+      start_time,
+      end_time,
+      organizer_id: organizerId,
+      status,
+      attendees,
+    }, client);
+    const savedMeeting = await findMeetingById(meeting.id, client);
+    if (!savedMeeting) {
+      throw new AppError('Meeting could not be loaded after creation', 500, 'MEETING_CREATE_FAILED');
+    }
+    return savedMeeting;
+  });
+  await runExternalEffects([
+    () => createCalendarEvent(meeting),
+    () => sendMeetingCreatedEmail(meeting),
+  ]);
+  return meeting;
 }
 
 function normalizeTimestamp(value, fieldName) {
   const timestamp = new Date(value);
-
   if (Number.isNaN(timestamp.getTime())) {
-    throw new AppError(`Invalid ${fieldName}`, 422, 'VALIDATION_ERROR', {
-      field: fieldName,
-    });
+    throw new AppError(`Invalid ${fieldName}`, 422, 'VALIDATION_ERROR', { field: fieldName });
   }
-
   return timestamp.toISOString();
 }
 
-export async function createMeeting(payload) {
-  const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
+// page/limit paginate; start/end filter to meetings overlapping that range.
+// With start or end and no limit, every meeting in the range is returned.
+export async function listMeetings({ page, limit, start, end } = {}) {
+  const startTime = start ? normalizeTimestamp(start, 'start') : null;
+  const endTime = end ? normalizeTimestamp(end, 'end') : null;
+  const ranged = startTime !== null || endTime !== null;
+  const paginate = limit !== undefined || page !== undefined || !ranged;
 
-  if (!title) {
-    throw new AppError('Meeting title is required', 422, 'VALIDATION_ERROR', {
-      field: 'title',
+  const parsedPage = page === undefined ? 1 : Number(page);
+  const parsedLimit = limit === undefined ? 20 : Number(limit);
+  if (!Number.isInteger(parsedPage) || parsedPage < 1) {
+    throw new AppError('page must be a positive integer', 422, 'VALIDATION_ERROR', { field: 'page' });
+  }
+  if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+    throw new AppError('limit must be an integer between 1 and 100', 422, 'VALIDATION_ERROR', {
+      field: 'limit',
     });
   }
 
-  const organizerId = Number(payload?.organizer_id);
-
-  if (!Number.isInteger(organizerId) || organizerId <= 0) {
-    throw new AppError('organizer_id must be a positive integer', 422, 'VALIDATION_ERROR', {
-      field: 'organizer_id',
-    });
-  }
-
-  const startTime = normalizeTimestamp(payload?.start_time, 'start_time');
-  const endTime = normalizeTimestamp(payload?.end_time, 'end_time');
-
-  if (new Date(endTime).getTime() <= new Date(startTime).getTime()) {
-    throw new AppError('Meeting end time must be after the start time', 422, 'VALIDATION_ERROR', {
-      field: 'end_time',
-    });
-  }
-
-  const attendees = normalizeAttendeeList(payload?.attendees);
-  const description = payload?.description == null ? '' : String(payload.description).trim();
-
-  const createdMeeting = await createMeetingRecord({
-    title,
-    description,
-    start_time: startTime,
-    end_time: endTime,
-    organizer_id: organizerId,
-    attendees,
+  const { meetings, total } = await findMeetings({
+    limit: paginate ? parsedLimit : null,
+    offset: paginate ? (parsedPage - 1) * parsedLimit : 0,
+    start: startTime,
+    end: endTime,
   });
-
-  const savedMeeting = await findMeetingById(createdMeeting.id);
-
-  if (!savedMeeting) {
-    throw new AppError(`Meeting with id ${createdMeeting.id} was not found after creation`, 500, 'MEETING_CREATE_FAILED');
+  if (!paginate) {
+    return { data: meetings };
   }
-
-  return savedMeeting;
+  return {
+    data: meetings,
+    pagination: {
+      page: parsedPage,
+      limit: parsedLimit,
+      total,
+      totalPages: Math.ceil(total / parsedLimit),
+    },
+  };
 }
 
 export async function getMeetingById(id) {
-  const parsedId = Number(id);
-
-  if (!Number.isInteger(parsedId) || parsedId <= 0) {
-    throw new AppError('Meeting id must be a positive integer', 422, 'VALIDATION_ERROR', {
-      field: 'id',
-    });
-  }
-
+  const parsedId = normalizePositiveId(id, 'id');
   const meeting = await findMeetingById(parsedId);
-
   if (!meeting) {
     throw new AppError(`Meeting with id ${parsedId} was not found`, 404, 'MEETING_NOT_FOUND', {
       meeting_id: parsedId,
     });
   }
-
   return meeting;
 }
 
-export async function listMeetings({ start, end } = {}) {
-  const startTime = start ? normalizeTimestamp(start, 'start') : null;
-  const endTime = end ? normalizeTimestamp(end, 'end') : null;
+export async function updateMeeting(id, payload = {}) {
+  const meetingId = normalizePositiveId(id, 'id');
+  const existing = await findMeetingById(meetingId);
+  if (!existing) {
+    throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
+      meeting_id: meetingId,
+    });
+  }
 
-  return findMeetingsInRange({ start: startTime, end: endTime });
+  const participantIds = [
+    existing.organizer_id,
+    ...(await findMeetingAttendeeIds(meetingId)),
+  ];
+
+  const result = await withUserLocks(participantIds, async (client) => {
+    if (!(await lockMeetingRecord(meetingId, client))) {
+      throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
+        meeting_id: meetingId,
+      });
+    }
+    const currentMeeting = await findMeetingById(meetingId, client);
+    if (!currentMeeting) {
+      throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
+        meeting_id: meetingId,
+      });
+    }
+    const currentAttendeeIds = await findMeetingAttendeeIds(meetingId, client);
+    const currentParticipantIds = [currentMeeting.organizer_id, ...currentAttendeeIds];
+    await lockUserRecords(currentParticipantIds, client);
+
+    const transactionUpdate = {
+      title: payload.title === undefined ? currentMeeting.title : normalizeTitle(payload.title),
+      description: payload.description === undefined
+        ? currentMeeting.description
+        : payload.description == null ? '' : String(payload.description).trim(),
+      start_time: payload.start_time === undefined ? currentMeeting.start_time : payload.start_time,
+      end_time: payload.end_time === undefined ? currentMeeting.end_time : payload.end_time,
+      status: payload.status === undefined ? currentMeeting.status : String(payload.status).trim(),
+    };
+    const transactionSchedule = normalizeSchedule(transactionUpdate.start_time, transactionUpdate.end_time);
+    transactionUpdate.start_time = transactionSchedule.start_time;
+    transactionUpdate.end_time = transactionSchedule.end_time;
+    if (!transactionUpdate.status || transactionUpdate.status.length > 50) {
+      throw new AppError('status must be between 1 and 50 characters', 422, 'VALIDATION_ERROR', {
+        field: 'status',
+      });
+    }
+
+    const updated = await updateMeetingRecord(meetingId, transactionUpdate, client);
+    if (!updated) {
+      throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
+        meeting_id: meetingId,
+      });
+    }
+    if (scheduleChanged(currentMeeting, updated)) {
+      await insertScheduleChange({
+        meeting_id: meetingId,
+        old_start_time: currentMeeting.start_time,
+        old_end_time: currentMeeting.end_time,
+        new_start_time: updated.start_time,
+        new_end_time: updated.end_time,
+        old_status: currentMeeting.status,
+        new_status: updated.status,
+        reason: 'Meeting updated',
+      }, client);
+    }
+    const planned = await planDependentChanges(meetingId, client, {
+      reason: scheduleChanged(currentMeeting, updated)
+        ? 'Parent meeting rescheduled'
+        : 'Dependency requirements recalculated after meeting update',
+    });
+    const changes = await applyScheduleChanges(planned, client);
+    const savedMeeting = await findMeetingById(meetingId, client);
+    if (savedMeeting.status !== 'cancelled' && savedMeeting.status !== 'blocked') {
+      await assertNoSchedulingConflict({
+        start_time: savedMeeting.start_time,
+        end_time: savedMeeting.end_time,
+        attendee_ids: currentParticipantIds,
+        exclude_meeting_id: meetingId,
+      }, client);
+    }
+    return { meeting: savedMeeting, dependencyChanges: changes, previousMeeting: currentMeeting };
+  }, { dependencyGraph: true });
+  const effects = [
+    () => updateCalendarEvent(result.meeting),
+    () => sendMeetingUpdatedEmail(result.meeting, result.previousMeeting),
+  ];
+  effects.push(...scheduleChangeEffects(result.dependencyChanges));
+  await runExternalEffects(effects);
+  return result.meeting;
+}
+
+export async function deleteMeeting(id) {
+  const meetingId = normalizePositiveId(id, 'id');
+  const existing = await findMeetingById(meetingId);
+  if (!existing) {
+    throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
+      meeting_id: meetingId,
+    });
+  }
+  const participantIds = [existing.organizer_id, ...(await findMeetingAttendeeIds(meetingId))];
+
+  await withUserLocks(participantIds, async (client) => {
+    if (!(await lockMeetingRecord(meetingId, client))) {
+      throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
+        meeting_id: meetingId,
+      });
+    }
+    const deleted = await deleteMeetingRecord(meetingId, client);
+    if (!deleted) {
+      throw new AppError(`Meeting with id ${meetingId} was not found`, 404, 'MEETING_NOT_FOUND', {
+        meeting_id: meetingId,
+      });
+    }
+  });
+  await runExternalEffects([
+    () => deleteCalendarEvent(meetingId),
+    () => sendMeetingDeletedEmail(existing),
+  ]);
 }
 
 export default {
   createMeeting,
+  deleteMeeting,
   getMeetingById,
   listMeetings,
   normalizeAttendeeList,
+  updateMeeting,
 };

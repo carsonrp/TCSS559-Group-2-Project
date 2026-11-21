@@ -1,0 +1,163 @@
+openapi: 3.0.3
+info:
+  title: MeetingLoop Notification Service API
+  version: 1.0.0
+  description: Internal email notification operations for meeting lifecycle changes.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Notifications
+paths:
+  /api/notifications/{type}:
+    post:
+      tags: [Notifications]
+      summary: Send a meeting lifecycle notification
+      description: >
+        Internal endpoint. Requires the configured SMTP provider. The application
+        also calls the same notification service directly from meeting workflows.
+      security:
+        - InternalBearer: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [created, updated, deleted, blocked, rescheduled]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+            example:
+              meeting:
+                id: 17
+                title: Sprint Planning
+                start_time: '2026-11-18T10:00:00Z'
+                end_time: '2026-11-18T11:00:00Z'
+                organizer:
+                  name: Alex Kim
+                  email: alex@example.com
+                attendees:
+                  - name: Sam Lee
+                    email: sam@example.com
+              old_time: '2026-11-18T09:00:00Z'
+              new_time: '2026-11-18T10:00:00Z'
+              reason: Parent meeting was rescheduled
+      responses:
+        '202':
+          description: Email sent, or explicitly skipped because SMTP is not configured.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      sent:
+                        type: boolean
+                      skipped:
+                        type: boolean
+                      reason:
+                        type: string
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          description: Configured SMTP provider rejected or failed to deliver the message.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid internal bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Internal notification API is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    InternalBearer:
+      type: http
+      scheme: bearer
+  schemas:
+    NotificationRequest:
+      type: object
+      required: [meeting]
+      properties:
+        meeting:
+          type: object
+          required: [title]
+          properties:
+            id:
+              type: integer
+            title:
+              type: string
+            start_time:
+              type: string
+              format: date-time
+            end_time:
+              type: string
+              format: date-time
+            organizer:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+            attendees:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  email:
+                    type: string
+                    format: email
+        old_meeting:
+          type: object
+        old_time:
+          type: string
+          format: date-time
+        new_time:
+          type: string
+          format: date-time
+        reason:
+          type: string
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+  responses:
+    InvalidJson:
+      description: Invalid JSON request body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

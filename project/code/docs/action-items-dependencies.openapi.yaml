@@ -1,0 +1,709 @@
+openapi: 3.0.3
+info:
+  title: MeetingLoop Action Item and Dependency Management API
+  version: 1.0.0
+  description: >
+    Dependencies between meetings, meeting readiness, action items, and prerequisites.
+    Meeting data is read through the Meeting Management module. Successful responses wrap
+    the result in `data`; errors use `{ error: { code, message, details } }`.
+    A body that is not valid JSON returns 400 INVALID_JSON; a well-formed request that fails
+    validation returns 422 VALIDATION_ERROR.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Dependencies
+  - name: Readiness
+  - name: Action items
+  - name: Prerequisites
+paths:
+  /api/meetings/{id}/dependencies:
+    post:
+      tags: [Dependencies]
+      summary: Add an upstream dependency to a meeting
+      description: >
+        Meeting `id` may start only after the upstream meeting ends plus `min_gap_hours`.
+        Checks run in order: input, both meetings exist, not a self-link, not a duplicate,
+        no cycle, minimum gap respected. The duplicate and cycle checks and the insert run in
+        one transaction holding an advisory lock on the dependency graph.
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDependency'
+            example:
+              upstream_meeting_id: 13
+              min_gap_hours: 24
+      responses:
+        '201':
+          description: Dependency created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Dependency'
+              example:
+                data:
+                  id: 4
+                  meeting_id: 15
+                  upstream_meeting_id: 13
+                  min_gap_hours: 24
+                  created_at: '2026-11-08T01:12:14.560Z'
+                  status: pending
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '404':
+          description: MEETING_NOT_FOUND (either meeting does not exist).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: SELF_DEPENDENCY, DUPLICATE_DEPENDENCY, or DEPENDENCY_CYCLE.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: DEPENDENCY_CYCLE
+                  message: Meeting 15 already depends on meeting 13; adding this would create a cycle
+                  details:
+                    meeting_id: 13
+                    upstream_meeting_id: 15
+        '422':
+          description: VALIDATION_ERROR, or DEPENDENCY_ORDER_VIOLATION when the meeting starts too early.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: DEPENDENCY_ORDER_VIOLATION
+                  message: The meeting starts before the upstream meeting ends plus the minimum gap
+                  details:
+                    meeting_start_time: '2026-11-11T15:30:00.000Z'
+                    upstream_end_time: '2026-11-13T14:00:00.000Z'
+                    min_gap_hours: 0
+                    earliest_allowed_start: '2026-11-13T14:00:00.000Z'
+    get:
+      tags: [Dependencies]
+      summary: List a meeting's upstream and downstream dependencies
+      description: Each dependency has a status computed at read time (satisfied, pending, or violated).
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: Dependencies with status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DependencyList'
+        '404':
+          $ref: '#/components/responses/MeetingNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/{id}/readiness:
+    get:
+      tags: [Readiness]
+      summary: Check whether a meeting can proceed
+      description: >
+        Combines upstream dependency status and prerequisites. A violated dependency or an overdue
+        required prerequisite blocks the meeting; an open required prerequisite that is not yet due
+        puts it at risk; optional open prerequisites are warnings; dropped items are listed but not
+        counted. A prerequisite's due date falls back to its action item's due date, then to the
+        meeting start.
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: Readiness result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Readiness'
+              example:
+                data:
+                  meeting_id: 15
+                  status: not_ready
+                  checked_at: '2026-11-09T00:00:00.000Z'
+                  blocking:
+                    - prerequisite_id: 6
+                      kind: action_item
+                      action_item_id: 3
+                      title: Complete the security sign-off for the release
+                      owner_id: 8
+                      required: true
+                      due_date: '2026-11-04T17:00:00.000Z'
+                      reason: overdue
+                  at_risk:
+                    - prerequisite_id: 7
+                      kind: document
+                      action_item_id: null
+                      title: Q4 budget forecast
+                      owner_id: null
+                      required: true
+                      due_date: '2026-11-13T17:00:00.000Z'
+                      reason: open
+                  warnings: []
+                  complete: []
+                  dropped: []
+                  dependencies: []
+                  counts:
+                    required: 2
+                    required_done: 0
+                    optional_open: 0
+        '404':
+          $ref: '#/components/responses/MeetingNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/meetings/{id}/action-items:
+    post:
+      tags: [Action items]
+      summary: Create an action item from a meeting
+      description: >
+        Manual items start as `open`. Items with `origin: ai` must include `evidence_quote` and
+        start as `proposed`; they count toward readiness only after a user confirms them.
+        The owner must be the meeting organizer or an attendee.
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateActionItem'
+            example:
+              description: Send the roadmap summary
+              owner_id: 2
+              origin: ai
+              evidence_quote: Daniel will send the roadmap summary after the call.
+      responses:
+        '201':
+          description: Action item created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ActionItem'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '404':
+          $ref: '#/components/responses/MeetingNotFound'
+        '422':
+          description: VALIDATION_ERROR (including an AI item without evidence_quote) or OWNER_NOT_PARTICIPANT.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/action-items:
+    get:
+      tags: [Action items]
+      summary: List action items
+      description: Sorted by due date. All filters are optional.
+      parameters:
+        - in: query
+          name: meeting_id
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: owner_id
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/ActionItemStatus'
+      responses:
+        '200':
+          description: Matching action items.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActionItem'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/action-items/{id}:
+    patch:
+      tags: [Action items]
+      summary: Update an action item's status, owner, or due date
+      description: >
+        Allowed status changes: proposed to open or rejected; open to done or dropped; done to open.
+        When `X-User-Id` is sent, only the item owner or the meeting organizer may change the item,
+        and only the organizer may drop it.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - in: header
+          name: X-User-Id
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateActionItem'
+            example:
+              status: done
+      responses:
+        '200':
+          description: Updated action item.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ActionItem'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '403':
+          description: FORBIDDEN (not the owner or organizer, or a non-organizer dropping the item).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: ACTION_ITEM_NOT_FOUND.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: INVALID_STATUS_TRANSITION; `details.allowed` lists the valid targets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_STATUS_TRANSITION
+                  message: Cannot change status from done to dropped
+                  details:
+                    from: done
+                    to: dropped
+                    allowed: [open]
+        '422':
+          description: VALIDATION_ERROR or OWNER_NOT_PARTICIPANT.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/meetings/{id}/prerequisites:
+    post:
+      tags: [Prerequisites]
+      summary: Attach an action item or a document as a prerequisite of a meeting
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePrerequisite'
+            examples:
+              actionItem:
+                value:
+                  kind: action_item
+                  action_item_id: 2
+                  required: true
+              document:
+                value:
+                  kind: document
+                  title: Demo script
+                  document_url: https://docs.example.com/demo
+                  due_date: '2026-11-10T09:00:00Z'
+                  required: false
+      responses:
+        '201':
+          description: Prerequisite created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Prerequisite'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '404':
+          description: MEETING_NOT_FOUND or ACTION_ITEM_NOT_FOUND.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: DUPLICATE_PREREQUISITE (the item is already attached to this meeting).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  parameters:
+    MeetingId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    AsOf:
+      in: query
+      name: as_of
+      required: false
+      description: Evaluate at this time instead of now (ISO 8601). Used by tests for stable results.
+      schema:
+        type: string
+        format: date-time
+  responses:
+    InvalidJson:
+      description: INVALID_JSON (the request body is not valid JSON).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ValidationError:
+      description: VALIDATION_ERROR.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    MeetingNotFound:
+      description: MEETING_NOT_FOUND.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              oneOf:
+                - type: object
+                  nullable: true
+                - type: array
+                  items:
+                    type: object
+    DependencyStatus:
+      type: string
+      enum: [satisfied, pending, violated]
+    MeetingSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+    CreateDependency:
+      type: object
+      required: [upstream_meeting_id]
+      properties:
+        upstream_meeting_id:
+          type: integer
+          minimum: 1
+        min_gap_hours:
+          type: integer
+          minimum: 0
+          maximum: 8760
+          default: 0
+    Dependency:
+      type: object
+      properties:
+        id:
+          type: integer
+        meeting_id:
+          type: integer
+        upstream_meeting_id:
+          type: integer
+        min_gap_hours:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/DependencyStatus'
+    DependencyList:
+      type: object
+      properties:
+        meeting:
+          $ref: '#/components/schemas/MeetingSummary'
+        upstream:
+          type: array
+          items:
+            type: object
+            properties:
+              dependency_id:
+                type: integer
+              min_gap_hours:
+                type: integer
+              upstream:
+                $ref: '#/components/schemas/MeetingSummary'
+              status:
+                $ref: '#/components/schemas/DependencyStatus'
+        downstream:
+          type: array
+          items:
+            type: object
+            properties:
+              dependency_id:
+                type: integer
+              min_gap_hours:
+                type: integer
+              meeting:
+                $ref: '#/components/schemas/MeetingSummary'
+              status:
+                $ref: '#/components/schemas/DependencyStatus'
+    ReadinessEntry:
+      type: object
+      properties:
+        prerequisite_id:
+          type: integer
+        kind:
+          type: string
+          enum: [action_item, document]
+        action_item_id:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        owner_id:
+          type: integer
+          nullable: true
+        required:
+          type: boolean
+        due_date:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          enum: [overdue, missing, open, optional_open, order_broken, upstream_cancelled]
+    Readiness:
+      type: object
+      properties:
+        meeting_id:
+          type: integer
+        status:
+          type: string
+          enum: [ready, at_risk, not_ready]
+        checked_at:
+          type: string
+          format: date-time
+        blocking:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadinessEntry'
+        at_risk:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadinessEntry'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadinessEntry'
+        complete:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadinessEntry'
+        dropped:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadinessEntry'
+        dependencies:
+          type: array
+          items:
+            type: object
+            properties:
+              upstream_meeting_id:
+                type: integer
+              status:
+                $ref: '#/components/schemas/DependencyStatus'
+        counts:
+          type: object
+          properties:
+            required:
+              type: integer
+            required_done:
+              type: integer
+            optional_open:
+              type: integer
+    ActionItemStatus:
+      type: string
+      enum: [proposed, open, done, dropped, rejected]
+    CreateActionItem:
+      type: object
+      required: [description]
+      properties:
+        description:
+          type: string
+          maxLength: 2000
+        owner_id:
+          type: integer
+          minimum: 1
+          nullable: true
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        origin:
+          type: string
+          enum: [manual, ai]
+          default: manual
+        evidence_quote:
+          type: string
+          nullable: true
+          description: Required when origin is ai.
+    UpdateActionItem:
+      type: object
+      minProperties: 1
+      description: At least one of status, owner_id, due_date.
+      properties:
+        status:
+          $ref: '#/components/schemas/ActionItemStatus'
+        owner_id:
+          type: integer
+          minimum: 1
+          nullable: true
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+    ActionItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        source_meeting_id:
+          type: integer
+        owner_id:
+          type: integer
+          nullable: true
+        description:
+          type: string
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ActionItemStatus'
+        origin:
+          type: string
+          enum: [manual, ai]
+        evidence_quote:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreatePrerequisite:
+      type: object
+      required: [kind]
+      description: kind action_item needs action_item_id; kind document needs title.
+      properties:
+        kind:
+          type: string
+          enum: [action_item, document]
+        action_item_id:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        document_url:
+          type: string
+          format: uri
+          nullable: true
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        required:
+          type: boolean
+          default: true
+        done:
+          type: boolean
+          default: false
+    Prerequisite:
+      type: object
+      properties:
+        id:
+          type: integer
+        meeting_id:
+          type: integer
+        kind:
+          type: string
+          enum: [action_item, document]
+        action_item_id:
+          type: integer
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        document_url:
+          type: string
+          nullable: true
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        required:
+          type: boolean
+        done:
+          type: boolean
+        dropped:
+          type: boolean
+        source:
+          type: string
+          enum: [manual, suggested]
+        created_at:
+          type: string
+          format: date-time
